@@ -28,3 +28,6 @@ logs/
 # Keep the reports directory but not heavyweight artifacts
 reports/**/*.png
 !reports/**/figures/*.png
+
+# 本机专用的 uv 缓存配置（绝对路径，不入库）
+uv.toml

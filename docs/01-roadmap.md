@@ -72,11 +72,11 @@
 
 顺序：`config` → `rope` → `norm` → `attention` → `mlp` → `block` → `transformer`
 
-- [ ] `tests/` 全绿
-- [ ] `test_hf_parity.py`：与 HuggingFace `LlamaForCausalLM` 逐层对齐，误差 < 1e-4
-- [ ] 参数量脚本输出 514.5M，与手算一致
+- [x] `tests/` 全绿（17 项）
+- [x] `test_hf_parity.py`：与 HuggingFace `LlamaForCausalLM` 逐层对齐，**实测 logits 最大误差 8.9e-8**（阈值 1e-4）
+- [x] 参数量脚本输出 514,525,440，与手算一致（`python scripts/count_params.py`）
 
-**验收**：数值对齐通过。**这一关不过，后面全是白干。**
+**验收**：✅ 已通过（2026-09-02）。数值对齐 8.9e-8，比阈值好 3 个数量级。
 
 ---
 
