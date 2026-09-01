@@ -87,7 +87,7 @@
 | 产物 | 平台 | 内容 |
 |---|---|---|
 | 权重 | HuggingFace Hub | base / midtrain / sft / dpo 四个版本 |
-| 中间 checkpoint | HF Hub（分 revision） | 每 10B tokens 一个，供他人做研究 |
+| 中间 checkpoint | HF Hub（分 revision） | 每 5B tokens 一个，供他人做研究 |
 | 训练日志 | W&B public report | 全部曲线 |
 | 模型卡 | HF Hub `README.md` | 规格、训练数据、评测、**明确的局限与用途限制** |
 | 代码 | 本仓库 | 打 tag，README 指向报告 |

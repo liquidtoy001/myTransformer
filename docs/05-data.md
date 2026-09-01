@@ -4,19 +4,19 @@
 
 ---
 
-## 一、目标配比（v1，51B tokens）
+## 一、目标配比（v1，25B tokens）
 
 | 子集 | 占比 | tokens | 来源 |
 |---|---|---|---|
-| 英文网页（高质） | 40% | 20.4B | `HuggingFaceFW/fineweb-edu` |
-| 英文网页（补充多样性） | 12% | 6.1B | `mlfoundations/dclm-baseline-1.0` |
-| 中文网页 | 20% | 10.2B | `opencsg/chinese-fineweb-edu-v2` + `BAAI/CCI3-HQ` |
-| 代码 | 12% | 6.1B | The Stack v2（Python/JS/Go/Rust/C++/SQL/Markdown） |
-| 数学 | 6% | 3.1B | `HuggingFaceTB/finemath` + `open-web-math` |
-| 百科/书籍 | 6% | 3.1B | Wikipedia zh+en、公版书 |
-| 指令类（预训练期少量混入） | 4% | 2.0B | `smoltalk`、`Infinity-Instruct` 的纯文本化 |
+| 英文网页（高质） | 40% | 10.0B | `HuggingFaceFW/fineweb-edu` |
+| 英文网页（补充多样性） | 12% | 3.0B | `mlfoundations/dclm-baseline-1.0` |
+| 中文网页 | 20% | 5.0B | `opencsg/chinese-fineweb-edu-v2` + `BAAI/CCI3-HQ` |
+| 代码 | 12% | 3.0B | The Stack v2（Python/JS/Go/Rust/C++/SQL/Markdown） |
+| 数学 | 6% | 1.5B | `HuggingFaceTB/finemath` + `open-web-math` |
+| 百科/书籍 | 6% | 1.5B | Wikipedia zh+en、公版书 |
+| 指令类（预训练期少量混入） | 4% | 1.0B | `smoltalk`、`Infinity-Instruct` 的纯文本化 |
 
-**退火期（最后 5.1B tokens）改用**：数学 20% / 代码 20% / 教科书与高质长文 30% / 指令 20% / 通用网页 10%。这个阶段的数据质量对最终下游分数影响极大，值得单独准备。
+**退火期（最后 2.5B tokens）改用**：数学 20% / 代码 20% / 教科书与高质长文 30% / 指令 20% / 通用网页 10%。这个阶段的数据质量对最终下游分数影响极大，值得单独准备。
 
 配比不是拍脑袋——P5 的消融实验 A4 会对照 v1 与 v2（中文 35%），用结果决定最终版本。
 

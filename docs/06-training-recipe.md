@@ -11,8 +11,8 @@ seq_len:              2048
 global_batch_tokens:  1048576        # 1M tokens/step
 micro_batch_size:     16             # 每卡；8 卡 × 16 × 2048 = 262144
 grad_accum_steps:     4              # 262144 × 4 = 1048576 ✓
-total_tokens:         51_000_000_000
-max_steps:            48_640         # 51e9 / 1.048e6
+total_tokens:         25_000_000_000
+max_steps:            23_840         # 25e9 / 1.048576e6
 
 # ---- 优化器 ----
 optimizer:            adamw_fused
@@ -24,8 +24,8 @@ grad_clip:            1.0
 
 # ---- 学习率日程（WSD） ----
 schedule:             wsd
-warmup_steps:         2000           # ≈ 4% 
-stable_lr_until:      43_776         # 90%
+warmup_steps:         1000           # ≈ 4%
+stable_lr_until:      21_456         # 90%
 decay_to:             0.0            # 最后 10% 线性衰减到 0（退火期）
 
 # ---- 精度与性能 ----
@@ -88,7 +88,7 @@ DDP 要点：
 
 ## 四、退火 / 中训（midtrain）
 
-预训练最后 10%（约 5.1B tokens）：
+预训练最后 10%（约 2.5B tokens）：
 
 1. 数据切换到高质量混合（见 [05-data.md](05-data.md)）
 2. LR 从 6e-4 线性衰减到 0
