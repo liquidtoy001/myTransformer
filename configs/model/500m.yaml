@@ -1,0 +1,27 @@
+# myTransformer 500M — 目标模型配置
+# 参数量推导见 docs/02-architecture.md §1.3
+name: mytransformer-500m
+
+vocab_size:      49152      # 48 * 1024，tensor core 友好
+d_model:         1280
+n_layers:        26
+n_heads:         20
+n_kv_heads:      5          # GQA，group size = 4
+head_dim:        64         # d_model / n_heads
+ffn_hidden:      3456       # ~= (8/3) * d_model，取整到 256 的倍数
+max_seq_len:     2048       # 退火期扩到 4096
+rope_theta:      10000.0    # 退火期改为 500000.0
+norm_eps:        1.0e-5
+tie_embeddings:  true
+attention_bias:  false
+dropout:         0.0
+
+init:
+  std:                  0.02
+  residual_scale_by:    sqrt_2n_layers   # 1/sqrt(2*n_layers)，作用于 W_o 与 W_down
+
+# 期望值（实现后由 scripts/count_params.py 校验）
+expected_params:
+  total:          514_500_000
+  non_embedding:  451_600_000
+  bf16_bytes:     1_029_000_000
