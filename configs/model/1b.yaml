@@ -1,0 +1,34 @@
+# myTransformer 1B — 可选升级配置
+# 与 500m.yaml 架构完全相同，只改宽度与深度；共用同一个分词器
+# 参数量推导见 docs/02-architecture.md §1.4
+name: mytransformer-1b
+
+vocab_size:      49152
+d_model:         2048
+n_layers:        22
+n_heads:         16
+n_kv_heads:      4          # GQA，group size = 4
+head_dim:        128        # 注意与 500M 的 64 不同
+ffn_hidden:      5632       # ~= (8/3) * d_model，取整到 256 的倍数
+max_seq_len:     2048
+rope_theta:      10000.0
+norm_eps:        1.0e-5
+tie_embeddings:  true
+attention_bias:  false
+dropout:         0.0
+
+init:
+  std:                  0.02
+  residual_scale_by:    sqrt_2n_layers   # 1/sqrt(2*22)
+
+expected_params:
+  total:          1_093_000_000
+  non_embedding:    992_000_000
+  bf16_bytes:     2_186_000_000
+
+# 训练侧约束：单卡峰值约 26GB，放不进 24G 卡
+# 必须启用以下之一
+requires_one_of:
+  - zero2_or_fsdp_shard_grad_op
+  - adamw_8bit
+  - gpu_memory_gte_40gb

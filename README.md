@@ -1,6 +1,6 @@
 # myTransformer
 
-从零实现并训练一个 **~500M 参数（bf16 约 1.0 GB）的 decoder-only Transformer LLM**，覆盖从分词器到对话推理的**全流程**：
+从零实现并训练一个 **decoder-only Transformer LLM**（主线 500M，可选升级到 1B），覆盖从分词器到对话推理的**全流程**：
 
 ```
 数据采集/清洗  →  BPE 分词器  →  模型实现  →  预训练  →  退火(midtrain)
@@ -13,20 +13,29 @@
 
 ## 目标模型规格
 
-| 项 | 值 |
-|---|---|
-| 参数量 | **514M**（非嵌入 452M） |
-| bf16 权重体积 | **1.03 GB** |
-| 架构 | LLaMA 风格：RMSNorm(pre-norm) + RoPE + SwiGLU + GQA |
-| 层数 / 隐藏维 | 26 / 1280 |
-| 注意力头 | 20 query heads / 5 KV heads（GQA，head_dim=64） |
-| FFN 中间维 | 3456（SwiGLU） |
-| 词表 | 49152（自训 BPE，中英+代码） |
-| 上下文 | 2048 预训练 → 4096 退火期扩展 |
-| 训练 token | 51B（≈100 tokens/param，刻意 over-train） |
-| 预算 | 8×H100 约 14 小时 ≈ **$300** |
+两档配置，架构完全相同，只有宽度/深度不同。**主线跑 500M，代码和流程一字不改就能切到 1B。**
 
-完整推导见 [docs/02-architecture.md](docs/02-architecture.md)。
+| 项 | ★ **500M（主线）** | **1B（可选升级）** |
+|---|---|---|
+| 参数量 | **514M**（非嵌入 452M） | **1.09B**（非嵌入 992M） |
+| 层数 / 隐藏维 | 26 / 1280 | 22 / 2048 |
+| 注意力头 | 20 Q / 5 KV，head_dim 64 | 16 Q / 4 KV，head_dim 128 |
+| FFN 中间维 | 3456 | 5632 |
+| 训练 token | 51B（≈100 tok/param） | 25B（≈23 tok/param） |
+| 8×H100 耗时 | **~14 小时 ≈ $300** | **~13 小时 ≈ $260** |
+| 单卡训练显存 | ~14 GB（4090 可单卡跑） | ~26 GB（**需 ZeRO/FSDP 或 40G+ 卡**） |
+
+共同部分：LLaMA 风格（RMSNorm pre-norm + RoPE + SwiGLU + GQA）、词表 49152 自训 BPE（中英+代码）、上下文 2048 预训练 → 4096 退火扩展、嵌入权重绑定、无 bias、无 dropout。
+
+**为什么主线选 500M 而不是 1B**（同样约 $300 的预算下）：
+
+1. **能 over-train 到 100 tokens/param**。1B 在同预算下只够 ~23 tok/param（勉强到 Chinchilla 最优），而 500M 能喂 4 倍于最优的数据。SmolLM2、Qwen2.5 这些实际好用的小模型走的都是 over-train 路线——**推理成本导向下，Chinchilla 最优并不是最优**。
+2. **单卡装得下**。500M 训练显存 14GB，一张 4090 就能完整跑通预训练；1B 一定要上 ZeRO-2/FSDP 或 8-bit optimizer。这对调试阶段的迭代速度影响很大。
+3. **迭代快**。P5 的缩放律和 6 组消融实验全都能在小规模上快速跑完。
+
+1B 的价值在于：**它逼你真正用上分布式切分**。所以路线图安排是先把 500M 完整跑通拿到报告，有余力再用同一套代码跑 1B 作为第二个数据点——那时缩放律曲线上就有 5 个点了，报告的含金量会明显不同。
+
+完整参数量推导与两档配置见 [docs/02-architecture.md](docs/02-architecture.md)。
 
 ---
 
@@ -50,7 +59,8 @@
 ```
 myTransformer/
 ├── configs/                    # YAML 实验配置（一个实验一个文件，入 git）
-│   ├── model/500m.yaml
+│   ├── model/500m.yaml         # 主线
+│   ├── model/1b.yaml           # 可选升级
 │   ├── data/mixture_v1.yaml
 │   └── train/pretrain_500m.yaml
 ├── src/mytransformer/
