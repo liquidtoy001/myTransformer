@@ -1,0 +1,30 @@
+# myTransformer 250M — 主线模型
+# 参数量推导见 docs/02-architecture.md §1.2
+#
+# 相比早期的 500M 方案：词表 49152 -> 32768、参数 515M -> 236M。
+# 理由是预算（100 AUD 内跑不动 500M，见 docs/04-compute.md §五），
+# 学到的东西完全不变，只是模型能力弱一档。
+name: mytransformer-250m
+
+vocab_size:      32768      # 32 × 1024；嵌入占比 14.2%，比例健康
+d_model:         1024
+n_layers:        18
+n_heads:         16
+n_kv_heads:      4          # GQA，group size = 4
+head_dim:        64         # d_model / n_heads
+ffn_hidden:      2816       # ~= (8/3) * d_model，取整到 256 的倍数
+max_seq_len:     2048       # 退火期扩到 4096
+rope_theta:      10000.0    # 退火期改为 500000.0
+norm_eps:        1.0e-5
+tie_embeddings:  true
+attention_bias:  false
+dropout:         0.0
+
+init:
+  std:                  0.02
+  residual_scale_by:    sqrt_2n_layers   # 1/sqrt(2*18)
+
+expected_params:
+  total:            236_491_776
+  non_embedding:    202_937_344
+  bf16_bytes:       472_983_552

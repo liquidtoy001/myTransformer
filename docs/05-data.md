@@ -4,21 +4,23 @@
 
 ---
 
-## 一、目标配比（v1，25B tokens）
+## 一、目标配比（v1，9.44B tokens）
 
 | 子集 | 占比 | tokens | 来源 |
 |---|---|---|---|
-| 英文网页（高质） | 40% | 10.0B | `HuggingFaceFW/fineweb-edu` |
-| 英文网页（补充多样性） | 12% | 3.0B | `mlfoundations/dclm-baseline-1.0` |
-| 中文网页 | 20% | 5.0B | `opencsg/chinese-fineweb-edu-v2` + `BAAI/CCI3-HQ` |
-| 代码 | 12% | 3.0B | The Stack v2（Python/JS/Go/Rust/C++/SQL/Markdown） |
-| 数学 | 6% | 1.5B | `HuggingFaceTB/finemath` + `open-web-math` |
-| 百科/书籍 | 6% | 1.5B | Wikipedia zh+en、公版书 |
-| 指令类（预训练期少量混入） | 4% | 1.0B | `smoltalk`、`Infinity-Instruct` 的纯文本化 |
+| 英文网页（高质） | 40% | 3.78B | `HuggingFaceFW/fineweb-edu` |
+| 英文网页（补充多样性） | 12% | 1.13B | `mlfoundations/dclm-baseline-1.0` |
+| 中文网页 | 20% | 1.89B | `opencsg/chinese-fineweb-edu-v2` + `BAAI/CCI3-HQ` |
+| 代码 | 12% | 1.13B | The Stack v2（Python/JS/Go/Rust/C++/SQL/Markdown） |
+| 数学 | 6% | 0.57B | `HuggingFaceTB/finemath` + `open-web-math` |
+| 百科/书籍 | 6% | 0.57B | Wikipedia zh+en、公版书 |
+| 指令类（预训练期少量混入） | 4% | 0.38B | `smoltalk`、`Infinity-Instruct` 的纯文本化 |
 
-**退火期（最后 2.5B tokens）改用**：数学 20% / 代码 20% / 教科书与高质长文 30% / 指令 20% / 通用网页 10%。这个阶段的数据质量对最终下游分数影响极大，值得单独准备。
+**退火期（最后 0.94B tokens）改用**：数学 20% / 代码 20% / 教科书与高质长文 30% / 指令 20% / 通用网页 10%。这个阶段的数据质量对最终下游分数影响极大，值得单独准备。
 
 配比不是拍脑袋——P5 的消融实验 A4 会对照 v1 与 v2（中文 35%），用结果决定最终版本。
+
+> 数据量只有 9.44B tokens，**下载和处理的工作量比原计划小一个数量级**：FineWeb-Edu 和 CCI3-HQ 各取一小部分分片即可，本地就能跑完，不需要租 CPU 机器。
 
 ---
 
@@ -57,7 +59,7 @@ FineWeb-Edu / CCI3-HQ 已经筛过，直接用。DCLM 部分自己跑一个 fast
 输出：data/tokens/<subset>/shard_NNNNN.bin   # 纯 uint16 数组，无 header
       data/tokens/<subset>/meta.json          # n_tokens / tokenizer_hash / shard 列表
 ```
-- 每 shard 200M tokens（≈400MB）
+- 每 shard 100M tokens（≈200MB）
 - 文档间插入 `<|endoftext|>`(id=0)
 - 训练时跨文档拼接成定长 2048 序列，**不 padding**
 - `tokenizer_hash` 必须写进 meta，换分词器时能立刻发现不匹配
@@ -66,7 +68,7 @@ FineWeb-Edu / CCI3-HQ 已经筛过，直接用。DCLM 部分自己跑一个 fast
 
 ## 三、验证集
 
-每个子集留 2M tokens 作 val，**必须从训练分片中物理删除**（不是靠 index 跳过——那种做法在断点续训时容易出错）。
+每个子集留 1M tokens 作 val，**必须从训练分片中物理删除**（不是靠 index 跳过——那种做法在断点续训时容易出错）。
 
 分子集报 val loss 而不是只报一个总数：中文 loss 和英文 loss 的变化趋势往往不同，混在一起看不出问题。
 

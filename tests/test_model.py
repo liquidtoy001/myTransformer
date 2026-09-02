@@ -59,8 +59,18 @@ def test_param_count_matches_formula():
     assert model.num_params(non_embedding=True) == cfg.count_params()["non_embedding"]
 
 
+def test_250m_config_hits_target():
+    """主线配置：configs/model/250m.yaml 的 expected_params 必须与公式一致。"""
+    cfg = ModelConfig.from_yaml("configs/model/250m.yaml")
+    n = cfg.count_params()
+    assert n["total"] == 236_491_776, n
+    assert n["non_embedding"] == 202_937_344, n
+    # 嵌入占比：小模型上这个数必须盯着，太高说明词表没跟着缩
+    assert 0.10 < n["embedding"] / n["total"] < 0.20, n
+
+
 def test_500m_config_hits_target():
-    """configs/model/500m.yaml 的 expected_params 必须与公式一致。"""
+    """参考配置：configs/model/500m.yaml 的 expected_params 必须与公式一致。"""
     cfg = ModelConfig.from_yaml("configs/model/500m.yaml")
     n = cfg.count_params()
     assert abs(n["total"] - 514_500_000) < 1_000_000, n

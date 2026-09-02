@@ -16,15 +16,42 @@ Decoder-only，LLaMA 系当代标配。每一项选择的理由：
 | Norm 类型 | **RMSNorm** | LayerNorm | 去掉均值中心化，少一次 reduce，速度快 ~10%，效果无损 |
 | 位置编码 | **RoPE**（base=10000） | 绝对/ALiBi | 相对位置、可外推、生态最成熟；退火期改 base=500000 扩到 4096 |
 | 激活 | **SwiGLU** | GeLU | 同等参数下困惑度更低（GLU Variants 论文），代价是 FFN 变三个矩阵 |
-| 注意力 | **GQA**（20 Q / 5 KV） | MHA / MQA | KV cache 缩小 4 倍，推理显存和吞吐大幅改善，质量损失可忽略 |
+| 注意力 | **GQA**（16 Q / 4 KV） | MHA / MQA | KV cache 缩小 4 倍，推理显存和吞吐大幅改善，质量损失可忽略 |
 | 内核 | **FlashAttention-2**（`F.scaled_dot_product_attention`） | 朴素实现 | 显存 O(N) 而非 O(N²)，长序列必需 |
-| 嵌入 | **权重绑定**（input embedding = lm_head） | 独立 | 省 63M 参数；小模型上绑定通常更好 |
+| 嵌入 | **权重绑定**（input embedding = lm_head） | 独立 | 省 33.6M 参数（占总量 14%）；小模型上绑定通常更好 |
 | Bias | **全部去掉** | 带 bias | 现代 LLM 通用做法，省参数且更稳定 |
 | Dropout | **0.0** | 0.1 | 预训练数据量远大于参数量，不会过拟合；dropout 只会拖慢收敛 |
 
 **刻意不用的东西（以及原因）**：MoE（工程复杂度对学习目标不划算）、MLA（DeepSeek 的多头潜在注意力，可作为进阶消融）、并行 Attention+FFN（收益不稳定）、QK-Norm（可作为 loss spike 的备选补救手段，见 [06](06-training-recipe.md)）。
 
-### 1.2 超参数（500M，主线）
+### 1.2 超参数（250M，主线）
+
+```yaml
+# configs/model/250m.yaml
+vocab_size:      32768      # 32 × 1024；嵌入占比 14.2%
+d_model:         1024
+n_layers:        18
+n_heads:         16
+n_kv_heads:      4          # GQA group size = 4
+head_dim:        64
+ffn_hidden:      2816       # ≈ (8/3)·d_model，取整到 256 的倍数
+max_seq_len:     2048       # 退火期 → 4096
+rope_theta:      10000.0    # 退火期 → 500000.0
+norm_eps:        1e-5
+tie_embeddings:  true
+attention_bias:  false
+dropout:         0.0
+```
+
+参数量：单层 11,274,240 × 18 层 = 202.9M（非嵌入）+ 嵌入 33.6M = **236.5M**，bf16 权重 0.44 GB，AdamW 训练状态 3.5 GB。
+
+**词表为什么是 32768 而不是 49152**：小模型上嵌入层会挤占计算参数。同样 18 层 d=1024 的模型，词表 49152 时嵌入占 19.9%，32768 时降到 14.2%。极端一点看，一个 d=384 的 30M 模型配 49152 词表，**67% 的参数都在查词表** —— 这是缩小模型时最容易忽略的配平。
+
+---
+
+### 1.3 参考配置：500M / 1B
+
+预算宽裕时可直接切换，代码一行不用改（见 §2.1 的分层原则）。
 
 ```yaml
 # configs/model/500m.yaml
@@ -43,7 +70,7 @@ attention_bias:  false
 dropout:         0.0
 ```
 
-### 1.3 参数量推导（务必自己算一遍）
+### 1.4 500M 参数量推导（务必自己算一遍）
 
 **单层**：
 
@@ -84,7 +111,7 @@ Adam m, v     : 514M × 8  = 4.11 GB
 
 结论：**500M 不需要 FSDP/ZeRO，单卡 DDP 就够**。仍然要实现 FSDP 路径——因为这是要学的东西，而且退火期扩到 4096 上下文后激活值会翻倍。
 
-### 1.4 1B 变体（可选升级）
+### 1.5 1B 变体
 
 架构完全相同，只改宽度和深度。**代码一行不用动，换个 yaml 就行**——这也是把超参全部收进 config 的意义。
 
@@ -132,16 +159,16 @@ bf16 权重体积                ≈ 2.19 GB
 2. **8-bit AdamW**（`bitsandbytes`）— Adam 状态从 8 字节/参数降到 2，单卡峰值降到 ~19 GB，能塞进 24G 卡
 3. **换 A100 40G / H100 80G** — 花钱解决
 
-### 1.5 前向流程
+### 1.6 前向流程
 
 ```
 input_ids (B, T)
-   └─ embedding                       → (B, T, 1280)
-      └─ × 26 个 TransformerBlock:
+   └─ embedding                       → (B, T, 1024)
+      └─ × 18 个 TransformerBlock:
            h = x + Attn(RMSNorm(x))          # 残差直连，不缩放
            h = h + SwiGLU(RMSNorm(h))
       └─ RMSNorm
-      └─ lm_head (= embedding.weight.T)  → (B, T, 49152)
+      └─ lm_head (= embedding.weight.T)  → (B, T, 32768)
       └─ cross_entropy(shift by 1)
 ```
 
@@ -149,12 +176,12 @@ Attention 内部：
 ```
 q,k,v = Wq·x, Wk·x, Wv·x
 q,k   = apply_rope(q, k, pos)                    # 只对 q,k 施加，不动 v
-k,v   = repeat_kv(k, v, n_rep=4)                 # GQA：5 组 → 20 头
+k,v   = repeat_kv(k, v, n_rep=4)                 # GQA：4 组 → 16 头
 out   = flash_attn(q, k, v, causal=True)
 out   = Wo · out
 ```
 
-### 1.6 初始化
+### 1.7 初始化
 
 - 所有线性层：`normal(0, 0.02)`
 - 残差分支的输出投影（`W_o`、`W_down`）：额外缩放 `1/sqrt(2·n_layers)`（GPT-2 做法，防止残差流方差随深度爆炸）
@@ -193,7 +220,7 @@ out   = Wo · out
 
 ### 2.3 数据格式约定
 
-分词后的语料统一落成 **flat uint16 数组分片**（nanoGPT 惯例），因为词表 49152 < 65536：
+分词后的语料统一落成 **flat uint16 数组分片**（nanoGPT 惯例），因为词表 32768 < 65536：
 
 ```
 data/tokens/fineweb_edu/shard_00000.bin   # 纯 uint16，无 header

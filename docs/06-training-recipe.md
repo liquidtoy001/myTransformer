@@ -2,21 +2,20 @@
 
 ---
 
-## 一、预训练超参（500M）
+## 一、预训练超参（250M 主线）
 
 ```yaml
-# configs/train/pretrain_500m.yaml
+# configs/train/pretrain_250m.yaml
 # ---- 数据 ----
 seq_len:              2048
-global_batch_tokens:  1048576        # 1M tokens/step
-micro_batch_size:     16             # 每卡；8 卡 × 16 × 2048 = 262144
-grad_accum_steps:     4              # 262144 × 4 = 1048576 ✓
-total_tokens:         25_000_000_000
-max_steps:            23_840         # 25e9 / 1.048576e6
+global_batch_tokens:  524288         # 0.5M tokens/step
+micro_batch_size:     16             # 每卡
+grad_accum_steps:     2              # 8 卡 × 16 × 2048 × 2 = 524288 ✓
+max_steps:            18000          # = 9.437B tokens = 39.9 tokens/param
 
 # ---- 优化器 ----
 optimizer:            adamw_fused
-lr:                   6.0e-4         # 峰值
+lr:                   7.0e-4         # 峰值
 betas:                [0.9, 0.95]
 eps:                  1.0e-8
 weight_decay:         0.1            # 只作用于 2D 权重，norm/bias/embedding 不衰减
@@ -24,36 +23,60 @@ grad_clip:            1.0
 
 # ---- 学习率日程（WSD） ----
 schedule:             wsd
-warmup_steps:         1000           # ≈ 4%
-stable_lr_until:      21_456         # 90%
-decay_to:             0.0            # 最后 10% 线性衰减到 0（退火期）
+warmup_steps:         720            # 4%
+stable_lr_until:      16200          # 90%
+decay_to:             0.0            # 最后 10%（0.94B tokens）线性衰减到 0
+
+# ---- 缩放律分叉点 ----
+scaling_fork_step:    9021           # = 4.73B tokens = 20 tokens/param
+scaling_fork_decay:   900            # 分叉后衰减到 0 的步数
 
 # ---- 精度与性能 ----
 dtype:                bfloat16
 compile:              true
-grad_checkpointing:   false          # 500M 显存够，关掉省 30% 时间
+grad_checkpointing:   false
 sdpa_backend:         flash
+chunked_ce:           true           # 分块交叉熵，见下
 
 # ---- 稳定性 ----
-z_loss:               1.0e-4         # 抑制 logits 漂移，PaLM 做法
+z_loss:               1.0e-4
 init_std:             0.02
-residual_init_scale:  1/sqrt(2*26)   # 残差输出投影额外缩放
+residual_init_scale:  1/sqrt(2*18)
 
 # ---- 日志与存档 ----
 log_every:            10
-eval_every:           500
-sample_every:         2000
-ckpt_every:           2000
-ckpt_keep:            5              # 加上每 10000 步的永久保留
+eval_every:           250
+sample_every:         1000
+ckpt_every:           1000           # 竞价实例必须勤存
+ckpt_keep:            5
 ```
 
 **为什么是这些值**：
 
-- **LR 6e-4** — 500M 规模的常规区间是 3e-4 ~ 1e-3。经验规律：LR 大致随 `1/sqrt(d_model)` 缩放。可在 P5 用 120M 模型扫 {3e-4, 6e-4, 1e-3} 确认。
-- **β₂=0.95 而非 0.999** — LLM 预训练的标准做法，二阶矩窗口更短，对分布变化响应更快，更稳。
-- **全局 batch 1M tokens** — 太小则梯度噪声大、GPU 打不满；太大则每步收益递减。500M 规模 0.5M–2M 都合理。
-- **WSD 而非 cosine** — 稳定段的 LR 恒定，好处是：① 可以随时在任意点分叉做退火实验，不用重训；② 中途想延长训练不用重新规划日程。cosine 一旦定了总步数就锁死了。
-- **z-loss** — `1e-4 · log²(Z)`，Z 是 softmax 分母。防止 logits 整体漂移导致 bf16 下溢出，几乎零成本的保险。
+- **LR 7e-4** — 经验规律 LR 大致随 `1/sqrt(d_model)` 缩放。d=1024 比 500M 方案的 d=1280 小，所以从 6e-4 提到 `6e-4 × sqrt(1280/1024) ≈ 6.7e-4`，取整 7e-4。P5 用 60M 模型扫 {5e-4, 7e-4, 1e-3} 确认。
+- **β₂=0.95 而非 0.999** — LLM 预训练标准做法，二阶矩窗口更短，对分布变化响应更快。
+- **全局 batch 0.5M tokens** — 比 500M 方案的 1M 小一半。模型越小，临界 batch 越小；给太大只是浪费。
+- **WSD 而非 cosine** — ① 稳定段 LR 恒定，可在任意点分叉做退火，缩放律的第 4 个点就是这么白拿的（见 [04-compute.md](04-compute.md) §五）；② 中途想延长训练不用重新规划日程。cosine 一旦定了总步数就锁死。
+- **z-loss** — `1e-4 · log²(Z)`，防止 logits 整体漂移导致 bf16 下溢出，几乎零成本的保险。
+- **ckpt_every 1000（而非 2000）** — 用竞价实例，抢占是常态；2.2 小时的训练存 18 次不算多。
+
+### 分块交叉熵（chunked_ce）
+
+**这是 16GB 消费级卡上跑得动跑不动的分界线。**
+
+朴素实现会一次性materialize 完整 logits：`batch × seq × vocab`。micro_batch=16、seq=2048、vocab=32768 时：
+
+```
+bf16 logits           16×2048×32768×2 = 2.00 GiB
+.float() 拷贝                          = 4.00 GiB
+log_softmax 中间量                     ≈ 4.00 GiB
+------------------------------------------------
+仅 loss 一项就                          ≈ 10 GiB
+```
+
+而 250M 模型本身的训练状态才 3.5 GB。**loss 的显存是模型的三倍。**
+
+做法：把序列切成若干块，逐块算 `lm_head` + `cross_entropy` 并累加，只保留当前块的 logits。峰值显存降到 `1/n_chunks`，代价是多几次 kernel 启动（<2% 时间）。P4 实现时一并做掉。
 
 ---
 
@@ -72,12 +95,12 @@ nodecay_params = [p for n,p in model.named_parameters() if p.dim() <  2]
 
 | 规模 | 策略 |
 |---|---|
-| 单卡冒烟 | 无 |
-| **500M / 8 卡（本项目）** | **DDP + 梯度累积**。500M 权重+优化器仅 8.2GB，不需要切分 |
-| 若扩到 2B+ | FSDP（`ShardingStrategy.FULL_SHARD`）或 ZeRO-2 |
+| P4 冒烟 / P5 小实验（单卡） | 无 |
+| **250M / 8 卡（P6 本项目）** | **DDP + 梯度累积**。250M 训练状态仅 3.5GB，远不需要切分 |
+| 若扩到 1B+ | FSDP（`SHARD_GRAD_OP` / `FULL_SHARD`）或 ZeRO-2 |
 | 若上多机 | FSDP + `HYBRID_SHARD`（机内切分、机间复制） |
 
-即便用不上，也**实现一条 FSDP 路径**并在 P5 测一次——这是要学的核心技能之一。
+即便用不上，也**实现一条 FSDP 路径**并在 P5 测一次——这是要学的核心技能之一。P6 选 8 卡而非更便宜的单卡，为的就是把真实的多卡工程走一遍。
 
 DDP 要点：
 - `gradient_as_bucket_view=True` 省显存
@@ -88,10 +111,10 @@ DDP 要点：
 
 ## 四、退火 / 中训（midtrain）
 
-预训练最后 10%（约 2.5B tokens）：
+预训练最后 10%（1800 步，约 0.94B tokens）：
 
 1. 数据切换到高质量混合（见 [05-data.md](05-data.md)）
-2. LR 从 6e-4 线性衰减到 0
+2. LR 从 7e-4 线性衰减到 0
 3. **同时**把 `rope_theta` 从 10000 提到 500000，`max_seq_len` 从 2048 扩到 4096
 4. 全局 batch 保持不变（序列变长则 micro-batch 减半）
 
@@ -129,7 +152,47 @@ epochs:  1
 
 ---
 
-## 六、故障处置手册
+## 六、跨硬件实验纪律
+
+本项目跨三种硬件：本地 RTX 4070 Ti SUPER（P0–P4 调试）、单卡 H100 竞价（P5）、8×H100 竞价（P6）。**换硬件本身不会让结果出错，但会让结果不可比**，而且分两类：
+
+| 指标类型 | 跨硬件可比吗 | 例子 |
+|---|---|---|
+| **性能指标** | **完全不可比** | MFU、step_time、吞吐、耗时、成本 |
+| **质量指标** | **基本可比**，但要控变量 | val loss、困惑度、下游任务分 |
+
+`loss vs token 数`是硬件无关的数学性质。而 MFU 是硬件特性，本地测到 40% 不代表 H100 上有 40%——H100 算力是本地卡的 13 倍但带宽只有 5 倍，**相对更"算力过剩"**，RMSNorm / softmax / 优化器更新这些带宽瓶颈的开销占比更大，小模型上 MFU 反而更低。
+
+噪声量级，从小到大：
+
+1. **硬件数值差异**（kernel 实现、归约顺序不同）：bf16 下 logits 相对差异 ~1e-3，对 val loss 影响 < 0.005
+2. **不同 seed**：小模型 val loss 波动 **0.01–0.02**
+3. **全局 batch 不一致**：这不是噪声，是**真实的实验混淆**
+
+**硬件引起的差异比 seed 差异还小。** 所以"跨卡"本身不是问题，问题是跨卡时往往同时改了别的东西（batch、精度、编译选项），把混淆变量误当成硬件问题。
+
+### 五条硬性纪律
+
+1. **全局 batch 是硬件无关的常量，用梯度累积吸收显存差异。**
+   本地 `micro=2 × accum=128`，8×H100 `micro=16 × accum=2`，全局都是 524288 tokens。数学上等价。**不遵守这条，后面所有对比作废。**
+
+2. **一整组消融必须在同一硬件上跑完。** A1–A6 六组全在单卡 H100 上，不能一半本地一半云上。缩放律的各点同理——任何系统性偏差都会污染拟合出的 α。
+
+3. **本地 GPU 只验证正确性，不测性能。** P4 在本地跑，看的是 loss 曲线形状、断点续训一致性、有无 NaN。性能校准放到 P5 第一次上 H100 时做；P6 开跑前的核对必须用 H100 自己的基线。
+
+4. **先测 seed 方差，再看消融结果。** 用同一配置跑 2–3 个不同 seed，得到 val loss 的标准差。**任何小于这个标准差的消融差异都不能下结论。** 这一步几乎没人做，但它决定了消融表里哪些行是真结论、哪些是噪声。
+
+5. **报告里逐实验标注硬件。** OLMo、SmolLM2 的技术报告都这么做。
+
+### 跨设备一致性测试
+
+`tests/test_cross_device.py`：同一份 checkpoint + 同一个 batch，CPU fp32 跑一遍、GPU bf16 跑一遍，比 loss。差异应在 1e-2 以内（bf16 精度决定）。
+
+**如果差很多，说明有算子在不同后端走了不同路径**——这类 bug 只在换硬件时暴露，非常难查。现在就加上，顺带覆盖以后换到 H100 的情况。
+
+---
+
+## 七、故障处置手册
 
 | 症状 | 可能原因 | 处置 |
 |---|---|---|
@@ -148,14 +211,15 @@ epochs:  1
 
 ---
 
-## 七、开跑前检查清单
+## 八、开跑前检查清单
 
 - [ ] `tests/` 全绿，尤其 `test_hf_parity` 和 `test_overfit`
-- [ ] 冒烟实验的 loss 曲线正常，MFU ≥ 35%
+- [ ] 冒烟实验的 loss 曲线正常（本地跑，**只验证正确性，不看 MFU**）
 - [ ] checkpoint 存/取往返测试通过（存了立刻读回来，loss 应完全一致）
 - [ ] checkpoint 自动同步到对象存储的脚本已验证
 - [ ] W&B 项目已建，alert 已配到手机
 - [ ] val 集确认不在训练分片里（写个断言脚本）
-- [ ] 数据总量 ≥ 计划 token 数 × 1.05
-- [ ] 用 1% 数据跑 30 分钟，实际吞吐与估算误差 < 20%
-- [ ] 算过一遍这次要花多少钱，且能接受
+- [ ] 数据总量 ≥ 9.44B × 1.1 ≈ 10.4B tokens
+- [ ] 在**目标硬件上**用 1% 数据跑 10 分钟，实测 MFU 并重算耗时与费用
+- [ ] 算过一遍这次要花多少钱（预期 $27 / 40 AUD），且能接受
+- [ ] 竞价实例的自动恢复脚本已验证（存 → 杀进程 → 重启 → loss 无跳变）

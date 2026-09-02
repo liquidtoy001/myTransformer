@@ -1,0 +1,48 @@
+# 250M 主线预训练配置。数值依据见 docs/06-training-recipe.md
+model: configs/model/250m.yaml
+
+# ---- 数据 ----
+seq_len:              2048
+global_batch_tokens:  524288         # 0.5M tokens/step
+micro_batch_size:     16             # 每卡
+grad_accum_steps:     2              # 8 卡 × 16 × 2048 × 2 = 524288 ✓
+max_steps:            18000          # = 9.437B tokens = 39.9 tokens/param
+
+# ---- 优化器 ----
+optimizer:            adamw_fused
+lr:                   7.0e-4         # 峰值；比 500M 方案的 6e-4 高，因 d_model 更小
+betas:                [0.9, 0.95]
+eps:                  1.0e-8
+weight_decay:         0.1
+grad_clip:            1.0
+
+# ---- 学习率日程（WSD） ----
+schedule:             wsd
+warmup_steps:         720            # 4%
+stable_lr_until:      16200          # 90%
+decay_to:             0.0            # 最后 10%（0.94B tokens）线性衰减到 0
+
+# ---- 缩放律分叉点 ----
+# 在 20x Chinchilla 处分叉出一支做短衰减，得到与 30M/60M/120M 可比的
+# 第 4 个缩放律数据点，成本约 $1.4 而非重训一次的 $11。
+# 这是选 WSD 而非 cosine 的实际收益。
+scaling_fork_step:    9021           # = 4.73B tokens = 20 tokens/param
+scaling_fork_decay:   900            # 分叉后衰减到 0 的步数
+
+# ---- 精度与性能 ----
+dtype:                bfloat16
+compile:              true
+grad_checkpointing:   false
+sdpa_backend:         flash
+chunked_ce:           true           # 分块交叉熵，避免 logits 峰值显存
+
+# ---- 稳定性 ----
+z_loss:               1.0e-4
+init_std:             0.02
+
+# ---- 日志与存档 ----
+log_every:            10
+eval_every:           250
+sample_every:         1000
+ckpt_every:           1000
+ckpt_keep:            5
