@@ -47,15 +47,15 @@
 |---|---|---|
 | `miniconda3`（含 torch 2.13.0+cu130 环境） | 4.5 GB | **复用**，与本地开发环境版本完全一致 |
 | └ `pkgs` 包缓存 | 0.9 GB | `conda clean --all -y` 可安全清掉 |
-| 课程作业目录 | 3.6 GB | demo 结束前不动；之后可备份到本地再删 |
+| 课程作业目录（demo2） | 3.6 GB | demo2 已结束：按 §3.5 **备份到本地后删除** |
 | `data` | 0.3 GB | 自行判断 |
-| **可用** | **7.5 GB**，清掉 conda 包缓存后约 **8.4 GB** | |
+| **可用** | **7.5 GB** → 清 conda 缓存后 8.4 GB → **删 demo2 后约 12 GB** | |
 
 ### 三层存储
 
 | 位置 | 容量 | 寿命 | 放什么 |
 |---|---|---|---|
-| `$HOME` | 可用 ~8 GB | 永久 | 代码、分词器、**P5 数据分片**、最新 checkpoint、编译缓存、指标日志 |
+| `$HOME` | 可用约 12 GB（清理 demo2 与 conda 缓存后） | 永久 | 代码、分词器、**P5 数据分片**、最新 checkpoint、编译缓存、指标日志 |
 | `$TMPDIR`（计算节点本地） | ~197 GB | **作业结束即失效**，且下个作业可能在别的节点 | HF 下载缓存、原始 parquet、中间文件、wandb 本地文件 |
 | 对象存储（云） | 按需 | 永久 | **P6 的 19 GB 数据分片**、历史 checkpoint |
 
@@ -66,7 +66,7 @@
 | 数据（S3 需要 1.99B tokens，所有 P5 实验共用） | 4.0 GB |
 | 最新 checkpoint + 写入时的临时副本（S3：1.2 GB × 2） | 2.4 GB |
 | torch 编译缓存 | ~0.5 GB |
-| **合计** | **~6.9 GB**，余量约 1.5 GB |
+| **合计** | **~6.9 GB**；清理后可用约 12 GB，余量约 5 GB |
 
 **写 checkpoint 要"先写临时文件、再改名替换"**，不能先删旧的再写新的：作业可能在写到一半时被杀，那样两份都没了。所以峰值是两份。历史 checkpoint 每次作业结束后同步回本地电脑，不留在 Rangpur。
 
@@ -82,13 +82,60 @@
 export HF_HOME="$TMPDIR/hf"                               # HF 下载缓存 → 本地盘
 export HF_DATASETS_CACHE="$TMPDIR/hf/datasets"
 export PIP_NO_CACHE_DIR=1                                 # 不留 pip 缓存
-export TORCHINDUCTOR_CACHE_DIR="$HOME/.cache/inductor"    # 编译缓存留 home，跨作业复用
+export TORCHINDUCTOR_CACHE_DIR="$HOME/myTransformer/.cache/inductor"  # 编译缓存留 home，跨作业复用
 export WANDB_DIR="$TMPDIR/wandb"                          # wandb 在线同步，本地文件放临时盘
 ```
 
 用 `datasets` 库读数据时**必须 `streaming=True`**，或者确保 `HF_HOME` 指向 `$TMPDIR`。默认会把整个原始 parquet 缓存到 `~/.cache/huggingface`，一下就超配额。
 
 查 home 用量要在 CPU 作业里用 `du -xh --max-depth=1 ~ | sort -h`。`du -sh ~` 在 NFS 上会扫描 conda 环境里的大量小文件，非常慢。
+
+### 3.4 环境隔离：不动课程的 `torch` 环境
+
+`miniconda3/envs/torch` 后面的课程作业还要用，**不要往里装本项目的依赖**，免得版本冲突搞坏作业环境。在它上面叠一个轻量 venv，继承 torch，只额外装本项目需要的几个小包：
+
+```bash
+source ~/miniconda3/bin/activate && conda activate torch
+python -m venv --system-site-packages ~/mt-venv      # 继承 torch 2.13.0+cu130，不重复安装
+source ~/mt-venv/bin/activate
+pip install --no-cache-dir -e ~/myTransformer[data,train]
+```
+
+`--system-site-packages` 让 venv 直接用课程环境里的 torch，所以 `mt-venv` 只有几百 MB。作业模板里只需 `source ~/mt-venv/bin/activate`。
+
+**本项目在 Rangpur 上的所有文件只放两处**：`~/myTransformer`（代码、数据、checkpoint、编译缓存、日志）和 `~/mt-venv`。收尾时删这两个目录即可，课程环境不受影响（§七）。
+
+### 3.5 开工前：备份并删除 demo2
+
+tar 打成一个文件再传，比 `scp -r` 逐个传大量小文件快，而且能用校验和确认完整。指南 §1 说登录节点可以用来"moving data"，这一步不用开作业。
+
+**1. 在 Rangpur 登录节点打包**（需要约 3.6 GB 临时空间，当前可用 7.5 GB，够）：
+
+```bash
+cd ~ && tar cf demo2_backup.tar COMP3710Rangpurfordemo2 && sha256sum demo2_backup.tar
+```
+
+**2. 在本地 PowerShell 下载并校验**：
+
+```powershell
+scp sXXXXXXX@rangpur.compute.eait.uq.edu.au:~/demo2_backup.tar E:\Documents\COMP3710\
+```
+
+```powershell
+(Get-FileHash E:\Documents\COMP3710\demo2_backup.tar -Algorithm SHA256).Hash.ToLower()
+```
+
+两边的 SHA256 必须完全一致（Linux 输出小写，所以 PowerShell 这边转成小写再比）。
+
+> ⚠️ 不要用 `ssh ... "tar cf - ..." > 文件` 这种流式写法：**Windows PowerShell 5.1 的 `>` 会把二进制流按文本重新编码**，文件会损坏且不报错。
+
+**3. 校验一致后，在 Rangpur 上删除**：
+
+```bash
+rm -rf ~/COMP3710Rangpurfordemo2 ~/demo2_backup.tar && df -h ~
+```
+
+本地解包：`tar -xf E:\Documents\COMP3710\demo2_backup.tar -C E:\Documents\COMP3710\`（Windows 10 以后自带 `tar`）。
 
 ---
 
@@ -112,8 +159,8 @@ echo "Job $SLURM_JOB_ID on $(hostname), started $(date)"
 nvidia-smi
 echo "TMPDIR=$TMPDIR"; df -h "$TMPDIR"          # 第一次跑时确认 A100 节点也有本地盘
 
-source "$HOME/miniconda3/bin/activate" && conda activate torch
-export HF_HOME="$TMPDIR/hf" PIP_NO_CACHE_DIR=1 TORCHINDUCTOR_CACHE_DIR="$HOME/.cache/inductor"
+source "$HOME/mt-venv/bin/activate"
+export HF_HOME="$TMPDIR/hf" PIP_NO_CACHE_DIR=1 TORCHINDUCTOR_CACHE_DIR="$HOME/myTransformer/.cache/inductor"
 
 cd "$HOME/myTransformer"
 python -m pytest tests/ -q                      # 先确认 GPU 环境下测试仍然全绿
@@ -135,9 +182,9 @@ python -m mytransformer.train.pretrain --config configs/train/smoke_s1.yaml --ma
 
 echo "Job $SLURM_JOB_ID on $(hostname), started $(date)"
 nvidia-smi
-source "$HOME/miniconda3/bin/activate" && conda activate torch
+source "$HOME/mt-venv/bin/activate"
 export HF_HOME="$TMPDIR/hf" PIP_NO_CACHE_DIR=1
-export TORCHINDUCTOR_CACHE_DIR="$HOME/.cache/inductor" WANDB_DIR="$TMPDIR/wandb"
+export TORCHINDUCTOR_CACHE_DIR="$HOME/myTransformer/.cache/inductor" WANDB_DIR="$TMPDIR/wandb"
 
 cd "$HOME/myTransformer"
 # exec：让 python 取代 bash 成为作业主进程，B:USR1 才能直接送到 python
@@ -175,7 +222,7 @@ squeue --me
 #SBATCH --output=logs/data_%j.out
 #SBATCH --error=logs/data_%j.err
 
-source "$HOME/miniconda3/bin/activate" && conda activate torch
+source "$HOME/mt-venv/bin/activate"
 export HF_HOME="$TMPDIR/hf" PIP_NO_CACHE_DIR=1
 
 cd "$HOME/myTransformer"
@@ -216,7 +263,24 @@ P6 正式训练（约 47 GPU 小时的量）**刻意不放在 Rangpur**：没有
 
 ---
 
-## 七、待确认
+## 七、收尾：给后续作业腾空间
+
+项目结束后，按这个顺序处理：
+
+| 步骤 | 内容 |
+|---|---|
+| 1. 带走成果 | 最终权重传 HuggingFace Hub；`reports/`、`logs/`、指标日志 `scp` 回本地（或 `git push`，它们本来就在仓库里） |
+| 2. 确认带走了 | 本地能打开报告、能加载权重跑一次生成 |
+| 3. 删除 | `rm -rf ~/myTransformer ~/mt-venv` |
+| 4. 核对 | `df -h ~`，应回到开工前的水平 |
+
+课程的 `miniconda3/envs/torch` 从头到尾没被改动，后续作业直接用。
+
+**中途也要清理**：P5 做完、进入 P7 之前，删掉 P5 的数据（`~/myTransformer/data/tokens/`，4 GB）和缩放律模型的 checkpoint，只留汇总结果。P7 需要为 250M 的完整 checkpoint 腾出约 5.7 GB。
+
+---
+
+## 八、待确认
 
 | 事项 | 怎么确认 |
 |---|---|
