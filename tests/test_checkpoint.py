@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 import torch
 
 from mytransformer.train import checkpoint as ck
@@ -18,6 +19,27 @@ def test_latest_ignores_partial_writes(tmp_path):
     ck.save(tmp_path, 200, {"step": 200})
     (tmp_path / "ckpt_00000300.pt.tmp").write_bytes(b"truncated")
     assert ck.load(ck.latest(tmp_path))["step"] == 200
+
+
+def test_crash_during_save_keeps_previous(tmp_path, monkeypatch):
+    """原子写入的真正意义：写到一半被杀，上一份 checkpoint 必须完好可用。
+
+    这个性质不主动模拟故障是测不出来的——把 save 改成直接写正式文件名，
+    其它测试照样全过。
+    """
+    ck.save(tmp_path, 100, {"step": 100})
+
+    def killed_midway(obj, f):
+        with open(f, "wb") as fh:
+            fh.write(b"half-written")  # 只写了一半
+        raise KeyboardInterrupt("模拟作业被杀")
+
+    monkeypatch.setattr(torch, "save", killed_midway)
+    with pytest.raises(KeyboardInterrupt):
+        ck.save(tmp_path, 200, {"step": 200})
+    monkeypatch.undo()
+
+    assert ck.load(ck.latest(tmp_path))["step"] == 100
 
 
 def test_latest_on_missing_dir(tmp_path):
