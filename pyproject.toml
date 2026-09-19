@@ -9,12 +9,12 @@ dependencies = [
     "numpy>=1.26",
     "pyyaml>=6.0",
     "tqdm>=4.66",
+    "tokenizers>=0.21",   # 分词器是训练、数据管线、推理共同依赖的核心组件
 ]
 
 [project.optional-dependencies]
 # 分词器训练与数据处理
 data = [
-    "tokenizers>=0.21",
     "datasets>=3.0",
     "fasttext-wheel>=0.9.2",
 ]

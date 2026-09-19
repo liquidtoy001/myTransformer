@@ -11,6 +11,7 @@
 
 | 篇 | 部分 | 代码 |
 |---|---|---|
+| [p1-1](p1-1-tokenizer.md) | 字节级 BPE 分词器：预切分、特殊 token、指纹 | `src/mytransformer/tokenizer/` |
 | [p4-1](p4-1-chunked-loss.md) | 分块交叉熵 | `src/mytransformer/model/transformer.py` 的 `forward` 后半段 |
 | [p4-2](p4-2-schedule.md) | WSD 学习率调度 | `src/mytransformer/train/schedule.py` |
 | [p4-3](p4-3-loader.md) | 可续跑的数据加载器 | `src/mytransformer/data/shards.py` |
