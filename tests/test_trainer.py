@@ -212,3 +212,22 @@ def test_repo_train_configs_are_valid(path):
 def test_config_rejects_indivisible_batch(env):
     with pytest.raises(ValueError, match="整除"):
         make_cfg(env, global_batch_tokens=100).grad_accum_steps()
+
+
+def test_cli_overrides_parse_types():
+    from mytransformer.train.pretrain import parse_overrides
+
+    got = parse_overrides(["compile=true", "lr=1e-3", "max_steps=50", "betas=[0.9, 0.99]", "run_dir=runs/x"])
+    assert got == {"compile": True, "lr": 0.001, "max_steps": 50, "betas": [0.9, 0.99], "run_dir": "runs/x"}
+    with pytest.raises(ValueError, match="键=值"):
+        parse_overrides(["compile"])
+
+
+def test_cli_override_typo_is_rejected(env, tmp_path):
+    """--set 的字段名拼错，和 yaml 里拼错一样直接报错。"""
+    from mytransformer.train.pretrain import main
+
+    p = tmp_path / "c.yaml"
+    p.write_text(yaml.safe_dump(make_cfg(env).to_dict()))
+    with pytest.raises(ValueError, match="complie"):
+        main(["--config", str(p), "--set", "complie=true"])

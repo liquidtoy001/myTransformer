@@ -16,6 +16,7 @@
 | [p4-3](p4-3-loader.md) | 可续跑的数据加载器 | `src/mytransformer/data/shards.py` |
 | [p4-4](p4-4-checkpoint.md) | 原子 checkpoint | `src/mytransformer/train/checkpoint.py` |
 | [p4-5](p4-5-trainer.md) | 训练循环：续跑、自检、退出；**怎么读训练日志** | `src/mytransformer/train/trainer.py` |
+| [p4-6](p4-6-rangpur-jobs.md) | Rangpur 作业脚本：信号怎么送到 Python、接力、冒烟 | `scripts/rangpur/` |
 
 ## 怎么用这些笔记
 

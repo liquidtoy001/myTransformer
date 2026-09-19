@@ -110,7 +110,8 @@
 - [ ] DDP 单机多卡（P6 要用）；FSDP 路径预留
 - [ ] W&B：目前只写 jsonl
 - [ ] **跨设备一致性测试**（CPU fp32 vs GPU bf16）
-- [ ] `scripts/rangpur/` 下的 `smoke.sbatch` / `train.sbatch` / `data.sbatch`，并在 `a100-test` 上跑一次冒烟
+- [x] `scripts/rangpur/`：`setup_env.sh`、`smoke.sbatch`、`train.sbatch`、`submit_chain.sh`（`data.sbatch` 随 P2）
+- [ ] 在 `a100-test` 上跑一次冒烟（同时验证 `torch.compile`、真实 `SIGUSR1`、A100 节点的 `$TMPDIR`）
 - [ ] 真实文本冒烟：等 P1 分词器、P2 数据就绪后，`ladder_s1` × 0.3B tokens
 - 梯度检查点：250M 在 A100/H100 上显存充足，暂不实现
 

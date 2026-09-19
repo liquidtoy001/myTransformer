@@ -90,22 +90,33 @@ export WANDB_DIR="$TMPDIR/wandb"                          # wandb 在线同步�
 
 查 home 用量要在 CPU 作业里用 `du -xh --max-depth=1 ~ | sort -h`。`du -sh ~` 在 NFS 上会扫描 conda 环境里的大量小文件，非常慢。
 
-### 3.4 环境隔离：不动课程的 `torch` 环境
+### 3.4 第一次上手：克隆仓库、配置环境
 
-`miniconda3/envs/torch` 后面的课程作业还要用，**不要往里装本项目的依赖**，免得版本冲突搞坏作业环境。在它上面叠一个轻量 venv，继承 torch，只额外装本项目需要的几个小包：
+**1. 克隆仓库**（登录节点上可以做，这是"moving data"）：
 
 ```bash
-source ~/miniconda3/bin/activate && conda activate torch
-python -m venv --system-site-packages ~/mt-venv      # 继承 torch 2.13.0+cu130，不重复安装
-source ~/mt-venv/bin/activate
-pip install --no-cache-dir -e ~/myTransformer[data,train]
+git clone https://github.com/liquidtoy001/myTransformer.git ~/myTransformer
 ```
 
-`--system-site-packages` 让 venv 直接用课程环境里的 torch，所以 `mt-venv` 只有几百 MB。作业模板里只需 `source ~/mt-venv/bin/activate`。
+仓库如果是私有的，需要先在 Rangpur 上配 SSH key 或 GitHub token。以后更新代码：`cd ~/myTransformer && git pull`。
 
-**本项目在 Rangpur 上的所有文件只放两处**：`~/myTransformer`（代码、数据、checkpoint、编译缓存、日志）和 `~/mt-venv`。收尾时删这两个目录即可，课程环境不受影响（§七）。
+**2. 配置环境**（要装包，放在 CPU 交互作业里做）：
 
-### 3.5 开工前：备份并删除 demo2
+```bash
+srun --partition=cpu --time=00:30:00 --pty bash
+```
+
+```bash
+bash ~/myTransformer/scripts/rangpur/setup_env.sh && exit
+```
+
+脚本做的事：在课程的 `torch` 环境上叠一个 `~/mt-venv`，用 `--system-site-packages` 直接继承课程环境里的 torch，只额外安装本项目的小依赖。
+
+**为什么不直接装进课程环境**：`miniconda3/envs/torch` 后面的课程作业还要用，往里装本项目的依赖可能引起版本冲突，把作业环境搞坏。`mt-venv` 只占几百 MB，收尾时 `rm -rf ~/mt-venv` 即可。
+
+**本项目在 Rangpur 上的所有文件只放两处**：`~/myTransformer`（代码、数据、checkpoint、编译缓存、日志）和 `~/mt-venv`。
+
+### 3.5 开工前：备份并删除 demo2（2026-09-19 已备份到本地，SHA256 校验一致）
 
 tar 打成一个文件再传，比 `scp -r` 逐个传大量小文件快，而且能用校验和确认完整。指南 §1 说登录节点可以用来"moving data"，这一步不用开作业。
 
@@ -139,100 +150,83 @@ rm -rf ~/COMP3710Rangpurfordemo2 ~/demo2_backup.tar && df -h ~
 
 ---
 
-## 四、作业模板
+## 四、作业脚本
 
-> 训练入口 `mytransformer.train.pretrain` 在 P4 实现；以下模板随 P4 放进 `scripts/rangpur/`。
+都在 `scripts/rangpur/`，**在 `~/myTransformer` 目录下提交**（日志路径是相对于提交目录的）。
 
-### 4.1 冒烟测试（`a100-test`，≤ 20 分钟）
+| 脚本 | 用途 | 分区 |
+|---|---|---|
+| `setup_env.sh` | 一次性环境配置（§3.4） | `cpu` 交互作业里运行 |
+| `smoke.sbatch` | 冒烟：测试 + `torch.compile` + 真实信号 + 续跑 | `a100-test`，15 分钟 |
+| `train.sbatch` | 训练一段（到 225 分钟存档退出） | `comp3710`，4 小时 |
+| `submit_chain.sh` | 把 `train.sbatch` 串成 N 个接力作业 | — |
+
+数据准备作业（`data.sbatch`）随 P2 一起写。
+
+### 4.1 冒烟（第一次上 A100 必做）
 
 ```bash
-#!/bin/bash
-#SBATCH --job-name=mt-smoke
-#SBATCH --partition=a100-test
-#SBATCH --account=comp3710
-#SBATCH --gres=gpu:1
-#SBATCH --time=00:15:00
-#SBATCH --output=logs/smoke_%j.out
-#SBATCH --error=logs/smoke_%j.err
-
-echo "Job $SLURM_JOB_ID on $(hostname), started $(date)"
-nvidia-smi
-echo "TMPDIR=$TMPDIR"; df -h "$TMPDIR"          # 第一次跑时确认 A100 节点也有本地盘
-
-source "$HOME/mt-venv/bin/activate"
-export HF_HOME="$TMPDIR/hf" PIP_NO_CACHE_DIR=1 TORCHINDUCTOR_CACHE_DIR="$HOME/myTransformer/.cache/inductor"
-
-cd "$HOME/myTransformer"
-python -m pytest tests/ -q                      # 先确认 GPU 环境下测试仍然全绿
-python -m mytransformer.train.pretrain --config configs/train/smoke_s1.yaml --max-minutes 10
+cd ~/myTransformer && mkdir -p logs && sbatch scripts/rangpur/smoke.sbatch
 ```
 
-### 4.2 训练接力（`comp3710`，每个作业 4 小时）
+**`mkdir -p logs` 不能省**：Slurm 不会自动创建 `--output` 所在的目录，目录不存在时作业会直接失败，而且**没有任何日志**可看。
+
+看进度和结果：
 
 ```bash
-#!/bin/bash
-#SBATCH --job-name=mt-train
-#SBATCH --partition=comp3710
-#SBATCH --account=comp3710
-#SBATCH --gres=gpu:1
-#SBATCH --time=04:00:00
-#SBATCH --signal=B:USR1@600                     # 被杀前 10 分钟给 python 发 USR1
-#SBATCH --output=logs/train_%j.out
-#SBATCH --error=logs/train_%j.err
-
-echo "Job $SLURM_JOB_ID on $(hostname), started $(date)"
-nvidia-smi
-source "$HOME/mt-venv/bin/activate"
-export HF_HOME="$TMPDIR/hf" PIP_NO_CACHE_DIR=1
-export TORCHINDUCTOR_CACHE_DIR="$HOME/myTransformer/.cache/inductor" WANDB_DIR="$TMPDIR/wandb"
-
-cd "$HOME/myTransformer"
-# exec：让 python 取代 bash 成为作业主进程，B:USR1 才能直接送到 python
-exec python -m mytransformer.train.pretrain --config "$CONFIG" --max-minutes 225
-```
-
-训练脚本必须做到三件事：
-
-1. **启动即续跑**：找到最新 checkpoint 就恢复（含 dataloader 位置与 RNG 状态）；已经训完就直接退出 0。这样多排几个作业也无害。
-2. **两道保险退出**：收到 `USR1` 时存档退出；同时自己计时，到 `--max-minutes`（时限减去 15 分钟）也存档退出。只靠信号不可靠。
-3. **续跑自检**：加载后用一个固定 batch 算 loss，和存档时记下的值对比，不一致就报错停下，防止"看着续上了、其实数据流错位了"。
-
-### 4.3 接力提交
-
-每人同时只能跑 1 个作业，所以直接排一串即可：
-
-```bash
-N=4                                             # 按需要的作业数调整
-prev=$(sbatch --parsable --export=ALL,CONFIG=configs/train/ladder_s3.yaml scripts/rangpur/train.sbatch)
-for i in $(seq 2 $N); do
-  prev=$(sbatch --parsable --dependency=afterany:$prev --export=ALL,CONFIG=configs/train/ladder_s3.yaml scripts/rangpur/train.sbatch)
-done
 squeue --me
 ```
 
-`afterany` 表示前一个无论成功还是被杀都接着跑——正是续跑需要的。
-
-### 4.4 数据准备（`cpu` 分区）
-
 ```bash
-#!/bin/bash
-#SBATCH --job-name=mt-data
-#SBATCH --partition=cpu
-#SBATCH --time=02:00:00
-#SBATCH --output=logs/data_%j.out
-#SBATCH --error=logs/data_%j.err
-
-source "$HOME/mt-venv/bin/activate"
-export HF_HOME="$TMPDIR/hf" PIP_NO_CACHE_DIR=1
-
-cd "$HOME/myTransformer"
-# 原始数据下载到 $TMPDIR（197 GB），分词后：
-#   P5 数据 → 写入 $HOME/myTransformer/data/tokens/（约 4 GB）
-#   P6 数据 → 逐分片上传到对象存储，不落 home（约 19 GB）
-python -m mytransformer.data.build --out "$OUT" --shards "$SHARDS" --workdir "$TMPDIR"
+tail -f logs/smoke_*.out
 ```
 
-**每个作业只处理若干个分片**，处理完一个就上传或写入一个，并留下 `.done` 标记。`$TMPDIR` 在作业结束后失效，所以不能指望下一个作业接着用上一个作业的中间文件。
+冒烟分四步，每一步验证一件在本地验证不了的事：
+
+| 步骤 | 验证什么 | 为什么本地验证不了 |
+|---|---|---|
+| [1/4] 全部测试 | A100 上测试照样全绿，包括分块交叉熵的显存测试 | 硬件不同 |
+| [2/4] 合成数据 | 与本地冒烟相同的数据，loss 可以直接对比 | — |
+| [3/4] `compile=true` 训练，中途发 `SIGUSR1` | `torch.compile` 能用；收到真实信号会存档退出 | Windows 没有 triton，也没有 `SIGUSR1` |
+| [4/4] 同一条命令再启动 | 续跑、通过自检、训完 | 本地验证过，这里确认 Linux 上也一样 |
+
+脚本最后会**明确检查**第 3 步是因 `SIGUSR1` 停下的、第 4 步是从 checkpoint 续跑的，任何一项不满足都判为失败（退出码 1，日志末尾是"冒烟失败"）。只看"最后训完了"是不够的：信号来得太早时进程会被直接杀掉，第 4 步从头训练照样能训完。
+
+第一次跑时顺便确认 §八 的待确认事项：A100 节点上 `$TMPDIR` 有多大。
+
+### 4.2 训练接力
+
+```bash
+cd ~/myTransformer && bash scripts/rangpur/submit_chain.sh configs/train/<配置>.yaml 3
+```
+
+同一配置跑不同种子（P5 的 seed 方差实验）：
+
+```bash
+SET="seed=1 run_dir=runs/<名字>_seed1" bash scripts/rangpur/submit_chain.sh configs/train/<配置>.yaml 1
+```
+
+**两道保险**（`train.sbatch` 里）：
+
+1. `--max-minutes 225`：训练 225 分钟后主动存档退出，给启动、编译、存档留 15 分钟
+2. `#SBATCH --signal=B:USR1@600`：万一没按时停，被杀前 10 分钟 Slurm 会发 `USR1`
+
+**`exec` 不能省**：`B:` 表示信号发给"批处理 shell"。`exec` 让 python 直接取代这个 shell 成为作业主进程，信号才会送到 python；不用 `exec`，信号只到 bash，python 收不到，照样会在时限到时被强杀。
+
+**用 `afterany` 串联**：前一个作业不管正常结束、到时被杀还是出错，下一个都照样启动。续跑逻辑本来就能处理这些情况；训练提前完成时，后面排着的作业一启动就会发现"已训完"并立即退出。如果某个作业报错（比如续跑自检失败），后面的作业也会很快失败：用 `scancel` 取消剩下的，查清原因再重新提交。
+
+### 4.3 常见问题
+
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| 一直 `PD (PartitionConfig)` | 没加 `--account=comp3710` | 脚本里已经加了；自己写新脚本时别忘 |
+| 一直 `PD`，原因是资源 | 加了 `--mem`，或申请的时间太长 | 去掉 `--mem`；调试用 `a100-test` 和短时间 |
+| 作业瞬间结束，找不到日志 | `logs/` 目录不存在 | `mkdir -p logs` |
+| `ModuleNotFoundError: mytransformer` | 没激活 `mt-venv`，或没运行 `setup_env.sh` | 按 §3.4 配置 |
+| `$'
+': command not found` | 脚本是 CRLF 换行 | 仓库里的 `.gitattributes` 已强制 LF；自己在 Windows 上新写的脚本要注意 |
+| `torch.compile` 报错 | 编译器、驱动或 triton 的问题 | 先用 `--set compile=false` 跑通，再单独排查 |
+| `ResumeError` | 续跑自检失败：代码、权重或数据与存档不一致 | **不要**删掉 checkpoint 硬跑；看报错里是模型输出还是数据流，查清原因 |
 
 ---
 

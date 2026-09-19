@@ -1,9 +1,9 @@
 [project]
 name = "mytransformer"
 version = "0.1.0"
-description = "从零实现并训练一个 500M decoder-only Transformer LLM"
+description = "从零实现并训练一个 250M decoder-only Transformer LLM（完整流程，用于学习）"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"   # Rangpur 课程环境是 3.11
 dependencies = [
     "torch>=2.6",
     "numpy>=1.26",
@@ -42,7 +42,7 @@ addopts = "-q"
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
