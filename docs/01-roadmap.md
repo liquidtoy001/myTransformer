@@ -70,7 +70,7 @@
 详见 [05-data.md](05-data.md)。
 
 - [ ] 下载各子集（FineWeb-Edu / DCLM / 中文语料 / 代码 / 数学 / 百科）
-- [ ] 质量过滤：Gopher 规则 + 语言识别 + 困惑度过滤
+- [x] 质量过滤：Gopher 规则（照 datatrove 实现）+ 中文汉字占比 + 代码 StarCoder 规则，在真实文档上校准（P2-1）。来源已做过语言识别和质量分类，不再重复
 - [ ] 去重：文档级 MinHash-LSH（Jaccard 0.8）+ 段落级精确去重
 - [ ] **从所有语料中剔除评测集**（decontamination）——n-gram 匹配，否则评测分数是假的
 - [ ] 分词打包成 uint16 shard，写 `meta.json`
