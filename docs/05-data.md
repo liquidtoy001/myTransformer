@@ -66,6 +66,11 @@ FineWeb-Edu / CCI3-HQ 已经筛过，直接用。DCLM 部分自己跑一个 fast
 > 去重是**性价比最高**的一步。重复数据不仅浪费算力，还会导致记忆化和 loss 曲线异常。
 
 ### 2.5 去污染（decontamination）
+
+> **P2-3 实际做法**（`src/mytransformer/data/decontam.py`，见 [learn/p2-3-decontam.md](learn/p2-3-decontam.md)）：
+> 11 个评测集（上面 8 个 + LAMBADA、HumanEval、MBPP）的"题面 + 正确答案"，13-gram 中汉字按半个词算（窗口约 26 字），
+> 排除 220 个在普通语料里常见的片段（`configs/data/decontam_exclude.json`）。校准文档上剔除 zh_web 0.55%、en_web 0.05%。
+
 **必做，否则评测分数是假的。** 把所有评测集（HellaSwag / ARC / PIQA / WinoGrande / C-Eval / CMMLU / GSM8K / MMLU）的题面做 13-gram 索引，训练语料中命中的文档整篇剔除。记录剔除了多少条，写进报告。
 
 ### 2.6 分词与打包
