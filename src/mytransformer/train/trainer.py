@@ -133,6 +133,8 @@ class Trainer:
 
         while self.step < cfg.max_steps:
             loss, grad_norm, lr = self._train_step()
+            if self.step == session_start:  # 本次会话的第一步刚做完（torch.compile 在这一步里编译）
+                self._reinstall_signal_handlers()
             self.step += 1
             self.tokens_seen += cfg.global_batch_tokens
             window_steps += 1
@@ -345,23 +347,47 @@ class Trainer:
     def _on_signal(self, signum: int, _frame) -> None:
         self.request_stop(f"signal:{signal.Signals(signum).name}")
 
+    @staticmethod
+    def _stop_signals() -> list[int]:
+        """Windows 没有 SIGUSR1，自动跳过。"""
+        return [s for s in (getattr(signal, "SIGUSR1", None), getattr(signal, "SIGTERM", None)) if s is not None]
+
     def _install_signal_handlers(self) -> dict:
         """SLURM 在作业被杀前发 USR1（我们在 sbatch 里用 --signal 要求的）和 TERM。
 
         处理函数只设一个标志，真正的存档在当前这一步做完之后：
         信号可能在任何时刻到来，在反向传播中途存档是不安全的。
-        Windows 没有 SIGUSR1，自动跳过。
+
+        还要解除屏蔽：被屏蔽（blocked）的信号到了只会挂起，既不触发处理函数、
+        也不按默认行为杀掉进程。Rangpur 冒烟 600172 就是"信号发了、进程没停也没死"。
         """
         old = {}
-        for name in ("SIGUSR1", "SIGTERM"):
-            sig = getattr(signal, name, None)
-            if sig is None:
-                continue
+        for sig in self._stop_signals():
             try:
                 old[sig] = signal.signal(sig, self._on_signal)
             except ValueError:  # 不在主线程
                 pass
+        if old and hasattr(signal, "pthread_sigmask"):
+            was_blocked = signal.pthread_sigmask(signal.SIG_UNBLOCK, list(old)) & set(old)
+            if was_blocked:
+                names = ", ".join(sorted(signal.Signals(s).name for s in was_blocked))
+                self.log(f"注意：{names} 原本处于屏蔽状态（blocked），已解除——否则收到也不会生效")
         return old
+
+    def _reinstall_signal_handlers(self) -> None:
+        """本次会话第一步做完后再装一次处理函数。
+
+        torch.compile 在第一次前向时才真正编译，期间会加载 triton 等底层库。
+        如果某个库在 C 层替换了处理函数，Python 的 signal.getsignal 是看不出来的；
+        重新调用 signal.signal 会重新登记，不管之前被谁换过都能恢复。
+        """
+        for sig in self._stop_signals():
+            try:
+                prev = signal.signal(sig, self._on_signal)
+            except ValueError:
+                continue
+            if prev != self._on_signal:
+                self.log(f"注意：{signal.Signals(sig).name} 的处理函数在第一步期间被替换成了 {prev!r}，已恢复")
 
     def _autocast(self):
         if self.amp_dtype is None:

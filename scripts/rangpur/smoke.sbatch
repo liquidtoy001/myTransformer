@@ -17,6 +17,26 @@
 #         —— Windows 上既没有 SIGUSR1 也没有 triton，这两件事只能在这里验证
 #   [4/4] 同一条命令再启动：应当续跑、通过自检、训完
 set -eo pipefail
+FAIL=0
+
+# 从进程外部读 /proc/<pid>/status，看操作系统记录的 SIGUSR1（10 号信号）状态：
+#   屏蔽（blocked）：信号到了只会挂起，既不触发处理函数，也不杀进程
+#   忽略（ignored）/ 有处理函数（caught）
+sigstate() {
+  python - "$1" "$2" <<'PY'
+import glob, sys
+pid, label = sys.argv[1], sys.argv[2]
+bit = 1 << (10 - 1)  # SIGUSR1
+def fields(path):
+    return dict(l.split(":", 1) for l in open(path).read().splitlines() if ":" in l)
+st = fields(f"/proc/{pid}/status")
+on = lambda k, d=st: bool(int(d[k].strip(), 16) & bit)
+tasks = glob.glob(f"/proc/{pid}/task/*/status")
+blocked_threads = sum(on("SigBlk", fields(t)) for t in tasks)
+print(f"[信号状态] {label}：SIGUSR1 主线程屏蔽={on('SigBlk')}  忽略={on('SigIgn')}  有处理函数={on('SigCgt')}"
+      f"  （{blocked_threads}/{len(tasks)} 个线程屏蔽了它）")
+PY
+}
 
 echo "=== Job $SLURM_JOB_ID on $(hostname), $(date)"
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
@@ -32,8 +52,9 @@ cd "$HOME/myTransformer"
 echo "git $(git rev-parse --short HEAD)"
 python -c "import torch; print('torch', torch.__version__, '| CUDA', torch.version.cuda, '|', torch.cuda.get_device_name(0))"
 
-echo; echo "=== [1/4] 测试"
-python -m pytest tests/ -q
+echo; echo "=== [1/4] 测试（-rs 列出被跳过的测试：两个真实信号测试在 Linux 上不应被跳过）"
+# 测试失败不中断作业：后面的诊断信息同样重要，要让它们也跑完
+python -m pytest tests/ -q -rs || { echo "!! 有测试失败"; FAIL=1; }
 
 echo; echo "=== [2/4] 合成数据"
 if [ -f data/synthetic/val_000.bin ]; then echo "已存在，跳过"; else python scripts/make_synthetic_data.py --out data/synthetic; fi
@@ -43,6 +64,7 @@ rm -rf "$RUN"
 ARGS=(--config configs/train/smoke_s1.yaml --set compile=true --set "run_dir=$RUN")
 
 echo; echo "=== [3/4] 训练开始后发 SIGUSR1：应当做完当前这一步、存档、退出"
+sigstate $$ "批处理 shell（训练进程从它继承信号掩码）" || true
 python -m mytransformer.train.pretrain "${ARGS[@]}" &
 PID=$!
 # 等到第一条训练记录出现再发信号：信号处理函数要进了 fit() 才装上，
@@ -52,12 +74,12 @@ for _ in $(seq 1 150); do
   sleep 2
 done
 sleep 10
+sigstate "$PID" "训练进程（compile 之后、发信号之前）" || true
 kill -USR1 "$PID" 2>/dev/null || echo "（发信号时训练已经结束了）"
 wait "$PID" || echo "第一段退出码 $?"
 
 # 明确检查，不能只看"最后训完了"：信号要是来得太早，进程会被直接杀掉、什么都不存，
 # 第 4 步就会从头训练、照样训完——冒烟看起来通过了，续跑却根本没被验证到。
-FAIL=0
 if grep -q "停下（signal:SIGUSR1）" "logs/smoke_${SLURM_JOB_ID}.out"; then
   echo "✓ 收到 SIGUSR1 后存档退出"
 else

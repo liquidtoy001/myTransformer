@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import json
+import os
+import signal
 
 import numpy as np
 import pytest
@@ -129,11 +131,49 @@ def test_time_budget_saves_and_exits(env):
 
 def test_signal_saves_and_exits(env):
     """SLURM 的 USR1/TERM 只设标志，当前这一步做完再存档。直接调处理函数模拟信号到达。"""
-    import signal
-
     reason = train(make_cfg(env), on_step=lambda t: t._on_signal(signal.SIGTERM, None) if t.step == 3 else None)
     assert reason == "signal:SIGTERM"
     assert ck.latest(env / "run").name == "ckpt_00000003.pt"
+
+
+POSIX_SIGNALS = pytest.mark.skipif(
+    not hasattr(signal, "SIGUSR1"), reason="需要真实的 POSIX 信号：在 Linux（Rangpur 冒烟第 1 步）上运行，Windows 自动跳过"
+)
+
+
+def kill_self_at(step):
+    return lambda t: os.kill(os.getpid(), signal.SIGUSR1) if t.step == step else None
+
+
+@POSIX_SIGNALS
+def test_real_sigusr1_when_blocked_at_start(env):
+    """H1：进程启动时 SIGUSR1 就处于屏蔽状态。训练循环必须自己解除屏蔽，真实信号才能生效。"""
+    before = signal.pthread_sigmask(signal.SIG_BLOCK, [signal.SIGUSR1])
+    try:
+        reason = train(make_cfg(env), on_step=kill_self_at(3))
+    finally:
+        # 修复失效时信号会一直挂起；这里一解除屏蔽它就会被递送，而此时处理函数已恢复成默认行为，
+        # 会把整个 pytest 进程杀掉。先设成忽略——挂起的信号会被丢弃——再恢复掩码和处理函数。
+        prev = signal.signal(signal.SIGUSR1, signal.SIG_IGN)
+        signal.pthread_sigmask(signal.SIG_SETMASK, before)
+        signal.signal(signal.SIGUSR1, prev)
+    assert reason == "signal:SIGUSR1"
+    assert ck.latest(env / "run").name == "ckpt_00000003.pt"
+
+
+@POSIX_SIGNALS
+def test_real_sigusr1_after_handler_replaced_in_first_step(env):
+    """H2：第一步期间（torch.compile 编译时）有库把处理函数换掉了。第一步做完后必须重新装上。"""
+    trainer = Trainer(make_cfg(env), device="cpu", log=lambda _: None, on_step=kill_self_at(3))
+    real_fwd = trainer.fwd
+
+    def clobbering_fwd(*args, **kw):
+        if trainer.step == 0:
+            signal.signal(signal.SIGUSR1, lambda *_: None)  # 模拟某个库在编译时换掉了处理函数
+        return real_fwd(*args, **kw)
+
+    trainer.fwd = clobbering_fwd
+    assert trainer.fit() == "signal:SIGUSR1"
 
 
 def test_nonfinite_grad_skips_update(env):
