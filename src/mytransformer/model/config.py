@@ -76,3 +76,18 @@ class ModelConfig:
             "total": total,
             "bf16_bytes": total * 2,
         }
+
+    def flops_per_token(self, seq_len: int | None = None) -> int:
+        """训练一个 token 的 FLOPs（前向 + 反向）。项目里所有耗时、成本、MFU 都从这里算。
+
+        三项：
+        - 6·N：各层的矩阵乘，N 为非嵌入参数（前向 2、反向 4）
+        - 6·d·V：lm_head 的矩阵乘。权重绑定后它的参数被记作"嵌入"，但计算真实发生；
+          漏掉这一项，250M 低估 12%，缩放律里最小的模型低估 67%
+        - 12·L·T·d：注意力打分（QKᵀ 与 AV），不对应任何参数，随序列长度增长
+        """
+        t = seq_len or self.max_seq_len
+        n = self.count_params()["non_embedding"]
+        lm_head = 6 * self.d_model * self.vocab_size
+        attn = 12 * self.n_layers * t * self.d_model
+        return 6 * n + lm_head + attn

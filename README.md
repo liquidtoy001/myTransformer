@@ -24,9 +24,9 @@
 | 上下文 | 2048 预训练 → 4096 退火期扩展 |
 | 训练 token | **9.44B**（≈40 tokens/param，适度 over-train） |
 | bf16 权重 | 0.44 GB；AdamW 训练状态 3.5 GB |
-| 训练成本 | 8×H100 竞价 **2.2 小时 ≈ $27 USD** |
+| 训练成本 | 8×H100 竞价 **2.5 小时 ≈ $30 USD** |
 
-规模是**由预算倒推**出来的，不是拍脑袋：100 AUD 的总预算里，500M 光主训练就要 152 AUD（见 [docs/04-compute.md](docs/04-compute.md) §五）。降到 250M 后，缩放律和消融实验全都保得住——而那才是学习价值最高的部分。
+规模是**由预算倒推**出来的，不是拍脑袋：100 AUD 的总预算里，500M 光主训练就要 103 AUD（见 [docs/04-compute.md](docs/04-compute.md) §二）。降到 250M 后，缩放律和消融实验全都保得住——而那才是学习价值最高的部分。
 
 **词表也跟着缩了**（49152 → 32768）。这是小模型必须做的配平：词表不缩的话，嵌入层会吃掉过大比例的参数，真正参与计算的部分反而变少。
 
@@ -34,31 +34,25 @@
 
 ---
 
-## 预算
+## 预算与硬件
 
-**全项目 76 AUD（$50 USD）**，已含 30% 重试余量。
+**全项目约 66 AUD（$43 USD）**，已含 30% 重试余量。硬件分三处：
 
-| 阶段 | 机时 | AUD |
+| 硬件 | 负责 | 成本 |
 |---|---|---|
-| P4 冒烟 30M | 1 分 | 0.1 |
-| P5 缩放律 30M / 60M / 120M（单卡） | 1.5 h | 3.4 |
-| P5 第 4 点（从 P6 分叉，见下） | 7 分 | 2.1 |
-| P5 消融 6 组 @ 60M（单卡） | 57 分 | 2.2 |
-| **P6 正式训练 250M（8×H100）** | **2.2 h** | **40.5** |
-| P7 SFT + DPO | | 3.0 |
-| P8 评测 + 4 个对照模型 | | 4.6 |
-| 对象存储 1 个月 | | 3.0 |
-| 小计 | | 58.8 |
-| +30% 重试/抢占余量 | | 17.6 |
-| **合计** | | **76.4 AUD** |
+| 本地 RTX 4070 Ti SUPER | P0–P4 开发调试 | 0 |
+| 学院 Rangpur A100 40G（[说明](docs/09-rangpur.md)） | P4 冒烟、P5 缩放律与消融、P7 后训练、P8 评测、数据准备 | 0（约 17 GPU 小时） |
+| 云上 8×H100 竞价 | **仅 P6 正式训练**（2.5 小时） | ~66 AUD |
 
-三个把成本压下来的做法：
+几个关键取舍：
 
-1. **缩放律第 4 个点用 WSD 分叉免费拿。** P6 训练到 4.73B tokens（=20× Chinchilla 点）时分叉出一支做短衰减到 0，得到与前三点可比的数据点——$1.4 而不是重训一次的 $11。这正是选 WSD 而非 cosine 的实际收益。
-2. **消融在 60M 上跑**，6 组共 57 分钟。挑 2 组在 120M 上复跑，看效应是放大还是消失。
-3. **单卡 / 8 卡分工**：小实验用单卡 H100 竞价（$1.5/h，简单便宜）；只有 P6 用 8 卡，时间短且把 DDP 学到。
+1. **缩放律第 4 个点用 WSD 分叉拿。** P6 训到 20 tokens/param 时分叉出一支做短衰减，得到与小模型可比的 250M 数据点，约 $1.5 而不是重训的 $15。这是选 WSD 而非 cosine 的实际收益。
+2. **P6 不放 Rangpur**：约 47 GPU 小时在全班共用的 10 块 A100 上太显眼；而且 Rangpur 每节点只有 1 块 GPU，学不到多卡 DDP。
+3. **P6 的数据在 Rangpur `cpu` 分区准备**，逐分片上传对象存储，不在 $12/小时的 GPU 机器上做 CPU 活。
 
-**P0–P4 的全部调试在本地 GPU 上做，零成本。** 调试是短时的，不需要长时间占用机器。
+**算力买的是模型质量，不是学习收益。** 分词器、数据管线、架构实现、数值对齐、训练框架、缩放律、消融——项目主体全部免费完成。P6 只是把一条已验证的流水线放大跑一次。
+
+明细见 [docs/04-compute.md](docs/04-compute.md) §五。
 
 ---
 
@@ -74,6 +68,7 @@
 | [06-training-recipe.md](docs/06-training-recipe.md) | 超参、LR 日程、并行策略、故障处置 | 阶段 P4–P6 |
 | [07-evaluation.md](docs/07-evaluation.md) | 评测任务选择与基线对照 | 阶段 P8 |
 | [08-report-template.md](docs/08-report-template.md) | 技术报告骨架（照 OLMo/SmolLM2） | 阶段 P8 |
+| [09-rangpur.md](docs/09-rangpur.md) | Rangpur 集群：提交规则、存储预算、作业模板 | 第一次上 Rangpur 前 |
 
 ---
 
@@ -83,6 +78,7 @@
 myTransformer/
 ├── configs/                    # YAML 实验配置（一个实验一个文件，入 git）
 │   ├── model/250m.yaml         # 主线
+│   ├── model/ladder_s{1,2,3}.yaml  # 缩放律阶梯（与主线同词表、同序列长度）
 │   ├── model/500m.yaml         # 参考（预算宽裕时）
 │   ├── model/1b.yaml           # 参考
 │   ├── data/mixture_v1.yaml
@@ -95,7 +91,7 @@ myTransformer/
 │   ├── posttrain/              # sft / dpo
 │   ├── eval/                   # 内置评测 + lm-eval-harness 适配
 │   └── infer/                  # kv_cache / generate / chat CLI
-├── scripts/                    # speedrun.sh、launch_multinode.sh、download_data.sh
+├── scripts/                    # count_params.py、benchmark.py；rangpur/ 下放 sbatch 模板（P4）
 ├── tests/                      # 数值对齐测试、shape 测试、tokenizer 往返测试
 ├── reports/                    # 实验记录、消融表、最终技术报告
 └── docs/                       # 见上表
@@ -109,7 +105,7 @@ myTransformer/
 # 1. 环境
 uv venv && uv pip install -e ".[dev]"
 
-# 2. 冒烟测试：30M 模型 / 0.3B tokens / 单卡
+# 2. 冒烟测试：ladder_s1 / 0.3B tokens / 单卡
 bash scripts/smoke.sh
 
 # 3. 正式预训练
@@ -120,7 +116,7 @@ torchrun --nproc_per_node=8 -m mytransformer.train.pretrain --config configs/tra
 
 ## 原则
 
-1. **先跑通再跑大** — 任何配置先在 30M/0.3B token 上端到端跑一遍，再上 8 卡。
+1. **先跑通再跑大** — 任何配置先在 `ladder_s1` / 0.3B token 上端到端跑一遍，再上 Rangpur 或 8 卡。
 2. **每个实验可复现** — config 入 git，commit hash 写进 checkpoint 元数据。
 3. **数值对齐优先** — 模型实现完成后先与 HuggingFace `LlamaForCausalLM` 逐层对齐（误差 < 1e-4），再谈训练。
 4. **不报无意义的分数** — 250M 规模在 MMLU/GSM8K 上接近随机，如实说明而不是粉饰。

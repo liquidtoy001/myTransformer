@@ -69,6 +69,45 @@ def test_250m_config_hits_target():
     assert 0.10 < n["embedding"] / n["total"] < 0.20, n
 
 
+LADDER = ["ladder_s1", "ladder_s2", "ladder_s3", "250m"]
+
+
+def test_scaling_ladder_shares_tokenizer_and_context():
+    """缩放律各点必须同词表、同序列长度，否则每 token 的 loss 不可比。
+
+    早期方案里小模型用 16384 词表、大模型用 32768，拟合出的曲线没有意义——
+    这个测试防止再犯。
+    """
+    cfgs = [ModelConfig.from_yaml(f"configs/model/{n}.yaml") for n in LADDER]
+    assert {c.vocab_size for c in cfgs} == {32768}
+    assert {c.max_seq_len for c in cfgs} == {2048}
+    non_embed = [c.count_params()["non_embedding"] for c in cfgs]
+    assert non_embed == sorted(non_embed) and len(set(non_embed)) == len(non_embed)
+
+
+def test_ladder_configs_hit_expected_params():
+    import yaml
+
+    for name in LADDER[:-1]:
+        path = f"configs/model/{name}.yaml"
+        exp = yaml.safe_load(open(path, encoding="utf-8"))["expected_params"]
+        n = ModelConfig.from_yaml(path).count_params()
+        assert n["total"] == exp["total"], (name, n)
+        assert n["non_embedding"] == exp["non_embedding"], (name, n)
+
+
+def test_flops_per_token_counts_lm_head():
+    """lm_head 的参数算作嵌入，但它的矩阵乘是真实计算，必须计入。"""
+    cfg = ModelConfig.from_yaml("configs/model/250m.yaml")
+    n = cfg.count_params()["non_embedding"]
+    lm_head = 6 * cfg.d_model * cfg.vocab_size
+    attn = 12 * cfg.n_layers * cfg.max_seq_len * cfg.d_model
+    assert cfg.flops_per_token() == 6 * n + lm_head + attn
+    assert abs(cfg.flops_per_token() - 1.872e9) / 1.872e9 < 0.01
+    # 序列越长，注意力项越大
+    assert cfg.flops_per_token(4096) > cfg.flops_per_token(2048)
+
+
 def test_500m_config_hits_target():
     """参考配置：configs/model/500m.yaml 的 expected_params 必须与公式一致。"""
     cfg = ModelConfig.from_yaml("configs/model/500m.yaml")

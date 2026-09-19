@@ -26,6 +26,7 @@ def main(paths: list[str]) -> int:
         print(f"  bf16 权重        {n['bf16_bytes'] / 1024**3:>15.2f} GB")
         # 训练显存：bf16 权重2 + bf16 梯度2 + fp32 主权重4 + Adam m,v 8 = 16 B/参数
         print(f"  训练状态(AdamW)  {n['total'] * 16 / 1024**3:>15.2f} GB  (不含激活值)")
+        print(f"  训练 FLOPs/token {cfg.flops_per_token() / 1e9:>15.3f} G   (seq={cfg.max_seq_len}，含 lm_head 与注意力)")
 
         exp = raw.get("expected_params")
         if exp:
@@ -39,5 +40,5 @@ def main(paths: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["configs/model/500m.yaml", "configs/model/1b.yaml"]
+    args = sys.argv[1:] or sorted(str(p) for p in Path("configs/model").glob("*.yaml"))
     raise SystemExit(main(args))

@@ -1,0 +1,26 @@
+# 缩放律阶梯 s1 —— 仅用于 P5 拟合 L(N)，不作为产出模型
+#
+# 阶梯所有点（ladder_s1/s2/s3 与主线 250m）必须共用同一个分词器与序列长度：
+# 词表不同则每 token 的 loss 不可比，拟合出的曲线没有意义。
+# 拟合用非嵌入参数 N（Kaplan 做法）——小模型嵌入占比高（本配置 57%），
+# 用总参数拟合会被嵌入层扭曲。
+name: mytransformer-s1
+
+vocab_size:      32768      # 与主线 250m 相同，不可改
+d_model:         384
+n_layers:        6
+n_heads:         6
+n_kv_heads:      2
+head_dim:        64
+ffn_hidden:      1024
+max_seq_len:     2048       # 与主线相同，不可改
+rope_theta:      10000.0
+norm_eps:        1.0e-5
+tie_embeddings:  true
+attention_bias:  false
+dropout:         0.0
+
+expected_params:
+  total:          22_025_088
+  non_embedding:  9_442_176
+  bf16_bytes:     44_050_176

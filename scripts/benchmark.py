@@ -13,7 +13,7 @@
 
 用法:
     python scripts/benchmark.py
-    python scripts/benchmark.py --configs 500m --seq 2048
+    python scripts/benchmark.py --configs s3 250m --seq 2048
 """
 
 from __future__ import annotations
@@ -23,15 +23,19 @@ import json
 import subprocess
 import sys
 import time
+from pathlib import Path
 
-# 缩放律阶梯 + 目标模型。d_model 均为 128 的倍数以对齐 tensor core。
-LADDER: dict[str, dict] = {
-    "50m": dict(d_model=512, n_layers=8, n_heads=8, n_kv_heads=2, head_dim=64, ffn_hidden=1408),
-    "120m": dict(d_model=768, n_layers=12, n_heads=12, n_kv_heads=3, head_dim=64, ffn_hidden=2048),
-    "250m": dict(d_model=1024, n_layers=18, n_heads=16, n_kv_heads=4, head_dim=64, ffn_hidden=2816),
-    "500m": dict(d_model=1280, n_layers=26, n_heads=20, n_kv_heads=5, head_dim=64, ffn_hidden=3456),
-    "1b": dict(d_model=2048, n_layers=22, n_heads=16, n_kv_heads=4, head_dim=128, ffn_hidden=5632),
+# 直接读仓库里的配置文件，保证测的就是要训的模型。
+ROOT = Path(__file__).resolve().parent.parent
+CONFIGS: dict[str, str] = {
+    "s1": "configs/model/ladder_s1.yaml",
+    "s2": "configs/model/ladder_s2.yaml",
+    "s3": "configs/model/ladder_s3.yaml",
+    "250m": "configs/model/250m.yaml",
+    "500m": "configs/model/500m.yaml",
+    "1b": "configs/model/1b.yaml",
 }
+DEFAULT = ["s1", "s2", "s3", "250m"]
 
 BUDGETS = [("1B", 1e9), ("3B", 3e9), ("10B", 1e10), ("25B", 2.5e10)]
 
@@ -45,7 +49,8 @@ def run_worker(name: str, seq: int, batch: int, ckpt: bool) -> None:
 
     from mytransformer.model import ModelConfig, Transformer
 
-    cfg = ModelConfig(vocab_size=49152, max_seq_len=seq, **LADDER[name])
+    cfg = ModelConfig.from_yaml(ROOT / CONFIGS[name])
+    cfg.max_seq_len = seq
     counts = cfg.count_params()
     device = "cuda"
 
@@ -74,9 +79,8 @@ def run_worker(name: str, seq: int, batch: int, ckpt: bool) -> None:
     torch.cuda.synchronize()
     dt = (time.perf_counter() - t0) / iters
 
-    # 训练一个 token 的 FLOPs：6N（前向2+反向4）+ 注意力打分部分。
-    # 后一项常被忽略，但序列一长占比不小，忽略会高估 MFU。
-    fpt = 6 * counts["non_embedding"] + 12 * cfg.n_layers * seq * cfg.d_model
+    # 公式见 ModelConfig.flops_per_token：6N + lm_head + 注意力打分
+    fpt = cfg.flops_per_token(seq)
     tok_s = batch * seq / dt
 
     print(
@@ -148,9 +152,9 @@ def fmt_time(sec: float) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--configs", nargs="*", default=list(LADDER))
+    ap.add_argument("--configs", nargs="*", default=DEFAULT, choices=list(CONFIGS))
     ap.add_argument("--seq", type=int, default=2048)
-    ap.add_argument("--ckpt", action="store_true", help="开梯度检查点（省显存、慢约 30%）")
+    ap.add_argument("--ckpt", action="store_true", help="开梯度检查点（省显存、慢约 30%%）")
     # 子进程内部用
     ap.add_argument("--_worker")
     ap.add_argument("--_batch", type=int)
