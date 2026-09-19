@@ -16,6 +16,12 @@ set -eo pipefail
 REPO="$HOME/myTransformer"
 VENV="$HOME/mt-venv"
 
+# 装包属于"大规模安装"，课程指南 §5 要求放在作业里，不能在登录节点上做
+if [ -z "${SLURM_JOB_ID:-}" ]; then
+  echo "请先进入 CPU 作业再运行：srun --partition=cpu --time=00:30:00 --pty bash"
+  exit 1
+fi
+
 [ -d "$REPO/.git" ] || { echo "先把仓库克隆到 $REPO（见 docs/09-rangpur.md §3.4）"; exit 1; }
 
 source "$HOME/miniconda3/bin/activate"

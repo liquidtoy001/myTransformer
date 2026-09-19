@@ -37,6 +37,24 @@
 >
 > 指南 §3.2 让你 `export TMPDIR=$HOME/tmp`——那只适用于安装 Miniconda 那一步。**训练和数据作业里不要这样设置**，否则临时文件会写进只有 16 GB 的 home，而系统本来就给了 197 GB 的本地盘。
 
+### 登录节点上能做什么
+
+课程指南 §5 的规则：**编辑文件、git、小文件操作可以在登录节点上做；训练、大规模安装、数据处理一律放进 Slurm 作业。** 登录节点是全班共用的，在上面跑重活会拖慢所有人。
+
+本项目用到的每条命令：
+
+| 在哪里 | 命令 |
+|---|---|
+| **登录节点** ✅ | `git clone` / `git pull`、`sbatch`、`squeue`、`scancel`、`tail -f logs/...`、`mkdir -p logs`、`df -h ~`、`bash scripts/rangpur/submit_chain.sh`（它只调用 `sbatch`） |
+| **CPU 交互作业**（`srun --partition=cpu --pty bash`） | `setup_env.sh`（装包）、`conda clean`、`du` 扫目录、`tar` 打包 / `sha256sum` 几 GB 的文件 |
+| **CPU 批处理作业**（`sbatch`，`cpu` 分区） | 下载数据、分词、打包分片（P2 的 `data.sbatch`） |
+| **A100 作业**（`sbatch`，`a100-test` / `comp3710`） | 测试、训练、评测 |
+| **不在 Rangpur 上做** | 画图、读 `metrics.jsonl` 做分析：用 `scp` 拉回本地再做 |
+
+拿不准的时候：**跑超过几秒钟、或者要读写几百 MB 以上的，就放进作业里。**
+
+`setup_env.sh` 会检查自己是不是在 Slurm 作业里运行，在登录节点上直接执行会被拒绝。
+
 ---
 
 ## 三、存储
@@ -47,7 +65,7 @@
 |---|---|---|
 | `miniconda3`（含 torch 2.13.0+cu130 环境） | 4.5 GB | **复用**，与本地开发环境版本完全一致 |
 | └ `pkgs` 包缓存 | 0.9 GB | `conda clean --all -y` 可安全清掉 |
-| 课程作业目录（demo2） | 3.6 GB | demo2 已结束：按 §3.5 **备份到本地后删除** |
+| 课程作业目录（demo2） | ~~3.6 GB~~ | ✅ 已备份到本地并删除（§3.5） |
 | `data` | 0.3 GB | 自行判断 |
 | **可用** | **7.5 GB** → 清 conda 缓存后 8.4 GB → **删 demo2 后约 12 GB** | |
 
@@ -92,23 +110,27 @@ export WANDB_DIR="$TMPDIR/wandb"                          # wandb 在线同步�
 
 ### 3.4 第一次上手：克隆仓库、配置环境
 
-**1. 克隆仓库**（登录节点上可以做，这是"moving data"）：
+克隆和配置环境放在**同一个 CPU 交互作业**里做。`git clone` 本身在登录节点上也可以，但紧接着的装包属于"大规模安装"，必须在作业里，所以干脆一起做。
 
-```bash
-git clone https://github.com/liquidtoy001/myTransformer.git ~/myTransformer
-```
-
-仓库如果是私有的，需要先在 Rangpur 上配 SSH key 或 GitHub token。以后更新代码：`cd ~/myTransformer && git pull`。
-
-**2. 配置环境**（要装包，放在 CPU 交互作业里做）：
+**1. 进入 CPU 作业：**
 
 ```bash
 srun --partition=cpu --time=00:30:00 --pty bash
 ```
 
+**2. 克隆仓库并配置环境：**
+
 ```bash
-bash ~/myTransformer/scripts/rangpur/setup_env.sh && exit
+git clone https://github.com/liquidtoy001/myTransformer.git ~/myTransformer && bash ~/myTransformer/scripts/rangpur/setup_env.sh
 ```
+
+**3. 退出作业，把节点还回去：**
+
+```bash
+exit
+```
+
+仓库如果是私有的，克隆时会要求登录，需要先在 Rangpur 上配 GitHub token 或 SSH key。以后更新代码：`cd ~/myTransformer && git pull`（登录节点上就行）。
 
 脚本做的事：在课程的 `torch` 环境上叠一个 `~/mt-venv`，用 `--system-site-packages` 直接继承课程环境里的 torch，只额外安装本项目的小依赖。
 
@@ -116,11 +138,13 @@ bash ~/myTransformer/scripts/rangpur/setup_env.sh && exit
 
 **本项目在 Rangpur 上的所有文件只放两处**：`~/myTransformer`（代码、数据、checkpoint、编译缓存、日志）和 `~/mt-venv`。
 
-### 3.5 开工前：备份并删除 demo2（2026-09-19 已备份到本地，SHA256 校验一致）
+### 3.5 开工前：备份并删除 demo2（✅ 2026-09-19 已完成：备份到本地、SHA256 一致、已从 Rangpur 删除）
 
-tar 打成一个文件再传，比 `scp -r` 逐个传大量小文件快，而且能用校验和确认完整。指南 §1 说登录节点可以用来"moving data"，这一步不用开作业。
+tar 打成一个文件再传，比 `scp -r` 逐个传大量小文件快，而且能用校验和确认完整。
 
-**1. 在 Rangpur 登录节点打包**（需要约 3.6 GB 临时空间，当前可用 7.5 GB，够）：
+**打包和算校验和要放在 CPU 交互作业里**：读写好几 GB 不算"小文件操作"（指南 §5）。2026-09-19 那次是在登录节点上做的，不符合规则；以后照下面的方式做。`scp` 下载是从你的电脑发起的，不占用 Rangpur 的计算资源。
+
+**1. 在 CPU 作业里打包**（需要约 3.6 GB 临时空间，当前可用 7.5 GB，够）。先 `srun --partition=cpu --time=00:30:00 --pty bash`，然后：
 
 ```bash
 cd ~ && tar cf demo2_backup.tar COMP3710Rangpurfordemo2 && sha256sum demo2_backup.tar
@@ -140,7 +164,7 @@ scp sXXXXXXX@rangpur.compute.eait.uq.edu.au:~/demo2_backup.tar E:\Documents\COMP
 
 > ⚠️ 不要用 `ssh ... "tar cf - ..." > 文件` 这种流式写法：**Windows PowerShell 5.1 的 `>` 会把二进制流按文本重新编码**，文件会损坏且不报错。
 
-**3. 校验一致后，在 Rangpur 上删除**：
+**3. 校验一致后，在 Rangpur 上删除**（删完 `exit` 退出 CPU 作业）：
 
 ```bash
 rm -rf ~/COMP3710Rangpurfordemo2 ~/demo2_backup.tar && df -h ~
