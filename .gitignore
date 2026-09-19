@@ -34,3 +34,6 @@ uv.toml
 
 # 编译缓存等（Rangpur 上放在项目目录内，便于收尾时一并删除）
 .cache/
+
+# 训练输出（checkpoint、metrics.jsonl）
+/runs/

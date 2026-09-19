@@ -1,0 +1,26 @@
+# 本地冒烟：合成数据 + ladder_s1。
+# 目的是验证训练框架在 GPU 上端到端能跑通、loss 真的在降，不是得到一个有用的模型。
+# 合成数据的 loss 理论下界是 ln(4) ≈ 1.386（见 scripts/make_synthetic_data.py）。
+model: configs/model/ladder_s1.yaml
+train_data: data/synthetic/train_*.bin
+val_data: data/synthetic/val_*.bin
+run_dir: runs/smoke_s1
+
+seq_len: 2048
+global_batch_tokens: 65536          # 冒烟用小 batch；正式实验是 524288
+micro_batch_size: 8                 # 8 × 2048 × 累积 4 = 65536
+max_steps: 300                      # ≈ 19.7M tokens，约为合成数据一轮
+
+lr: 2.0e-3
+warmup_steps: 30
+
+dtype: bfloat16
+compile: false                      # Windows 没有 triton；到 Rangpur（Linux）上再打开
+ce_chunk: 4096
+z_loss: 1.0e-4
+
+log_every: 10
+eval_every: 50
+eval_batches: 4
+ckpt_every: 100
+ckpt_keep: 2
