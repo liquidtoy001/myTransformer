@@ -73,8 +73,8 @@
 - [x] 质量过滤：Gopher 规则（照 datatrove 实现）+ 中文汉字占比 + 代码 StarCoder 规则，在真实文档上校准（P2-1）。来源已做过语言识别和质量分类，不再重复
 - [x] 去重：文档级 MinHash-LSH（Jaccard 0.8，256 个哈希 / 32 段，暴力枚举校准）+ 段落级精确去重（代码不做）（P2-2）
 - [x] **从所有语料中剔除评测集**（decontamination）：11 个评测集的 13-gram（汉字算半个词），排除 220 个通用片段（P2-3）。局限：C-Eval 27%、CMMLU 38% 的题太短没进索引
-- [ ] 分词打包成 uint16 shard，写 `meta.json`
-- [ ] 留出 val set（每个子集各 1M tokens，**训练集中必须删掉**）
+- [x] 分词打包成 uint16 shard，写 `meta.json`（分词器指纹 + 每个分片的 token 数，训练前核对）；按配比在打包时混合（P2-4）
+- [x] 留出 val set（每个子集各 1M tokens，**训练集中必须删掉**）；训练时每个子集单独报 val loss（P2-4）
 
 **验收**：P5 数据 2B tokens 写入 Rangpur home；P6 数据 ≥10.4B tokens（9.44B + 10% 冗余）上传到对象存储；随机抽 200 条人工过目；`reports/data.md` 写清每一步过滤掉了多少。
 
@@ -115,7 +115,7 @@
 - [ ] **跨设备一致性测试**（CPU fp32 vs GPU bf16）
 - [x] `scripts/rangpur/`：`setup_env.sh`、`smoke.sbatch`、`train.sbatch`、`submit_chain.sh`（`data.sbatch` 随 P2）
 - [x] 在 `a100-test` 上跑冒烟：作业 600202 通过（`torch.compile`、真实 `SIGUSR1` 中途存档、续跑、A100 节点 `$TMPDIR` 均验证）。第一次（600172）暴露了 compile 会在 C 层替换信号处理函数，已修复
-- [ ] 真实文本冒烟：等 P1 分词器、P2 数据就绪后，`ladder_s1` × 0.3B tokens
+- [ ] 真实文本冒烟：等 P1 分词器、P2 数据就绪后，`ladder_s1` × 0.3B tokens（本机已用 1000 万 token 的迷你数据跑通链路：`configs/train/smoke_realtext.yaml`，P2-4）
 - 梯度检查点：250M 在 A100/H100 上显存充足，暂不实现
 
 **验收**：

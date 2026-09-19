@@ -23,8 +23,10 @@ from typing import Callable
 
 import torch
 
+from ..data.pack import check_meta
 from ..data.shards import ShardLoader, eval_batches
 from ..model import ModelConfig, Transformer
+from ..tokenizer import Tokenizer
 from . import checkpoint as ck
 from .config import TrainConfig
 from .schedule import LRSchedule
@@ -92,11 +94,17 @@ class Trainer:
             kind=cfg.schedule, decay_start=cfg.decay_start, min_lr_ratio=cfg.min_lr_ratio,
         )
         self.accum = cfg.grad_accum_steps()
-        self.loader = ShardLoader(_glob(cfg.train_data), cfg.micro_batch_size, cfg.seq_len, seed=cfg.seed)
-        self.val = (
-            eval_batches(_glob(cfg.val_data), cfg.micro_batch_size, cfg.seq_len, cfg.eval_batches)
-            if cfg.val_data else None
-        )
+        train_paths = _glob(cfg.train_data)
+        val_paths = _glob(cfg.val_data) if cfg.val_data else []
+        self._check_data(train_paths + val_paths)
+        self.loader = ShardLoader(train_paths, cfg.micro_batch_size, cfg.seq_len, seed=cfg.seed)
+        # 每个验证文件单独算 loss（P2 为每个子集各写一个 val_<子集>.bin）：中文和英文的 loss
+        # 走势常常不一样，混成一个数就看不出来。总的 eval 批数在各文件之间平分，开销不变
+        per_file = math.ceil(cfg.eval_batches / max(1, len(val_paths)))
+        self.val = {
+            Path(p).stem.removeprefix("val_"): eval_batches([p], cfg.micro_batch_size, cfg.seq_len, per_file)
+            for p in val_paths
+        }
         self.fwd = torch.compile(self.model) if cfg.compile else self.model
         self.amp_dtype = torch.bfloat16 if cfg.dtype == "bfloat16" else None
         self.flops_per_token = self.model_cfg.flops_per_token(cfg.seq_len)
@@ -314,15 +322,32 @@ class Trainer:
     @torch.no_grad()
     def _log_eval(self) -> None:
         self.model.eval()
-        losses = []
-        for x, y in self.val:
-            with self._autocast():
-                out = self.model(x.to(self.device), y.to(self.device), shift=False, ce_chunk=self.cfg.ce_chunk)
-            losses.append(out["loss"].item())
+        per_set = {}
+        for name, batches in self.val.items():
+            losses = []
+            for x, y in batches:
+                with self._autocast():
+                    out = self.model(x.to(self.device), y.to(self.device), shift=False, ce_chunk=self.cfg.ce_chunk)
+                losses.append(out["loss"].item())
+            per_set[name] = sum(losses) / len(losses)
         self.model.train()
-        val = sum(losses) / len(losses)
-        self._append({"type": "eval", "step": self.step, "tokens": self.tokens_seen, "val_loss": val})
-        self.log(f"step {self.step:>6}  val_loss {val:.4f}")
+        val = sum(per_set.values()) / len(per_set)  # 各子集等权平均：不让 token 多的子集主导
+        rec = {"type": "eval", "step": self.step, "tokens": self.tokens_seen, "val_loss": val}
+        if len(per_set) > 1:
+            rec["val"] = per_set
+        self._append(rec)
+        detail = "  " + "  ".join(f"{k} {v:.3f}" for k, v in per_set.items()) if len(per_set) > 1 else ""
+        self.log(f"step {self.step:>6}  val_loss {val:.4f}{detail}")
+
+    def _check_data(self, paths: list[str]) -> None:
+        """训练前核对数据：分片的 meta.json 与配置的分词器一致、分片没有拷贝不完整，词表放得进模型。"""
+        fingerprint = None
+        if self.cfg.tokenizer:
+            tok = Tokenizer.from_file(self.cfg.tokenizer)
+            if tok.vocab_size > self.model_cfg.vocab_size:
+                raise ValueError(f"分词器词表 {tok.vocab_size} 大于模型的 vocab_size {self.model_cfg.vocab_size}")
+            fingerprint = tok.fingerprint
+        check_meta(paths, fingerprint)
 
     def _append(self, rec: dict) -> None:
         self.run_dir.mkdir(parents=True, exist_ok=True)

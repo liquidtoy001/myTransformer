@@ -271,3 +271,33 @@ def test_cli_override_typo_is_rejected(env, tmp_path):
     p.write_text(yaml.safe_dump(make_cfg(env).to_dict()))
     with pytest.raises(ValueError, match="complie"):
         main(["--config", str(p), "--set", "complie=true"])
+
+
+# ---------------------------------------------------------------- 数据核对与分子集验证
+
+
+def test_val_loss_reported_per_file(env):
+    """val_*.bin 有多个时，每个文件（子集）单独报 loss，val_loss 是它们的等权平均。"""
+    rng = np.random.default_rng(1)
+    write_shard(env / "data" / "val_zh.bin", rng.integers(0, VOCAB, 2000))
+    train(make_cfg(env, max_steps=4))
+    rec = records(env, kind="eval")[-1]
+    assert set(rec["val"]) == {"000", "zh"}
+    assert rec["val_loss"] == pytest.approx(sum(rec["val"].values()) / 2)
+
+
+def test_refuses_shards_from_another_tokenizer(env):
+    """分片目录的 meta.json 记录的分词器指纹和配置的分词器不一致：训练前就报错，而不是训出乱码。"""
+    from pathlib import Path
+
+    mt32k = Path(__file__).resolve().parents[1] / "tokenizer" / "mt32k.json"
+    shards = sorted((env / "data").glob("*.bin"))
+    n = {p.name: p.stat().st_size // 2 for p in shards}
+    meta = {"tokenizer": "0000000000000000",
+            "train": {"shards": [{"file": k, "tokens": v} for k, v in n.items() if k.startswith("train")]},
+            "val": {"000": {"file": "val_000.bin", "tokens": n["val_000.bin"]}}}
+    (env / "data" / "meta.json").write_text(json.dumps(meta))
+    big = env / "big.yaml"  # 词表放得下 mt32k 的模型，这样报错只能来自指纹
+    big.write_text((env / "tiny.yaml").read_text().replace(f"vocab_size: {VOCAB}", "vocab_size: 32768"))
+    with pytest.raises(ValueError, match="分片是用分词器 0000000000000000 切的"):
+        Trainer(make_cfg(env, model=str(big), tokenizer=str(mt32k)), device="cpu", log=lambda _: None)

@@ -1,0 +1,26 @@
+# 本地冒烟：真实文本 + ladder_s1。数据由 scripts/make_calib_dataset.py 生成（约 1000 万 token，未经过滤去重）。
+# 目的：验证分词 → 打包 → 训练整条链路接得上，分词器指纹核对通过，每个子集的验证 loss 都在降。
+model: configs/model/ladder_s1.yaml
+train_data: data/tokens_calib/mix/train_*.bin
+val_data: data/tokens_calib/mix/val_*.bin
+tokenizer: tokenizer/mt32k.json
+run_dir: runs/smoke_realtext
+
+seq_len: 2048
+global_batch_tokens: 65536
+micro_batch_size: 8
+max_steps: 150                      # ≈ 9.8M tokens，约为这份数据一轮
+
+lr: 2.0e-3
+warmup_steps: 20
+
+dtype: bfloat16
+compile: false
+ce_chunk: 4096
+z_loss: 1.0e-4
+
+log_every: 10
+eval_every: 25
+eval_batches: 14                    # 7 个子集，每个 2 批
+ckpt_every: 150
+ckpt_keep: 1

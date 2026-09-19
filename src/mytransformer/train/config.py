@@ -16,7 +16,8 @@ import yaml
 class TrainConfig:
     model: str                              # 模型配置 yaml
     train_data: str                         # 训练分片的 glob
-    val_data: str | None = None             # 验证分片的 glob
+    val_data: str | None = None             # 验证分片的 glob；匹配到多个文件时每个文件单独报 loss
+    tokenizer: str | None = None            # 分词器文件；设置后训练前核对分片 meta.json 里的指纹
     run_dir: str = "runs/default"
 
     # ---- batch ----
