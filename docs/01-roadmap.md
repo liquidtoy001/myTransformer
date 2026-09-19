@@ -111,7 +111,7 @@
 - [ ] W&B：目前只写 jsonl
 - [ ] **跨设备一致性测试**（CPU fp32 vs GPU bf16）
 - [x] `scripts/rangpur/`：`setup_env.sh`、`smoke.sbatch`、`train.sbatch`、`submit_chain.sh`（`data.sbatch` 随 P2）
-- [ ] 在 `a100-test` 上跑一次冒烟（同时验证 `torch.compile`、真实 `SIGUSR1`、A100 节点的 `$TMPDIR`）
+- [x] 在 `a100-test` 上跑冒烟：作业 600202 通过（`torch.compile`、真实 `SIGUSR1` 中途存档、续跑、A100 节点 `$TMPDIR` 均验证）。第一次（600172）暴露了 compile 会在 C 层替换信号处理函数，已修复
 - [ ] 真实文本冒烟：等 P1 分词器、P2 数据就绪后，`ladder_s1` × 0.3B tokens
 - 梯度检查点：250M 在 A100/H100 上显存充足，暂不实现
 

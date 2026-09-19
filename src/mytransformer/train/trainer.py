@@ -380,6 +380,10 @@ class Trainer:
         torch.compile 在第一次前向时才真正编译，期间会加载 triton 等底层库。
         如果某个库在 C 层替换了处理函数，Python 的 signal.getsignal 是看不出来的；
         重新调用 signal.signal 会重新登记，不管之前被谁换过都能恢复。
+
+        Rangpur 上实测确实如此：冒烟 600172 没有这一步，SIGUSR1 发出后训练既没停也没死；
+        冒烟 600202 加上这一步后在下一步就存档退出了。/proc 显示信号从未被屏蔽，
+        Python 层也没看到处理函数被换——替换发生在 C 层，具体是哪个库尚未查明。
         """
         for sig in self._stop_signals():
             try:
