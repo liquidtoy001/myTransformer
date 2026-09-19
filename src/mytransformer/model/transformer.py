@@ -12,6 +12,7 @@ import math
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torch.utils.checkpoint import checkpoint
 
 from .block import TransformerBlock
 from .config import ModelConfig
@@ -56,8 +57,19 @@ class Transformer(nn.Module):
         input_ids: torch.Tensor,
         targets: torch.Tensor | None = None,
         kv_caches: list[tuple[torch.Tensor, torch.Tensor]] | None = None,
+        *,
+        shift: bool = True,
+        ce_chunk: int = 0,
+        z_loss: float = 0.0,
     ) -> dict:
-        """input_ids: (B, T)。targets 给了就同时返回 loss。"""
+        """input_ids: (B, T)。targets 给了就同时返回 loss。
+
+        shift=True：HF 约定，targets 与 input_ids 对齐，内部错开一位。
+        shift=False：targets 已经是下一个 token（训练时加载器直接给 x、y），T 个位置全部算 loss。
+        ce_chunk>0：分块计算 lm_head + 交叉熵并逐块做激活重算，峰值显存只剩一块的 logits；
+                    此时不返回完整 logits——训练用不到它，而它恰恰是显存大头。
+        z_loss>0：额外加 z_loss · mean(logsumexp²)，抑制 logits 整体漂移（PaLM）。
+        """
         _, t = input_ids.shape
         offset = kv_caches[0][0].shape[2] if kv_caches else 0
         cos, sin = self.rotary(t, offset)
@@ -72,19 +84,44 @@ class Transformer(nn.Module):
             if new_caches is not None:
                 new_caches.append(new_cache)
 
-        x = self.norm(x)
-        logits = self.lm_head(x)
+        h = self.norm(x)
+        if targets is None:
+            return {"logits": self.lm_head(h), "loss": None, "kv_caches": new_caches}
 
-        loss = None
-        if targets is not None:
-            # 标准的下一 token 预测：logits[..., :-1] 对 targets[..., 1:]
-            loss = F.cross_entropy(
-                logits[:, :-1].reshape(-1, logits.size(-1)).float(),
-                targets[:, 1:].reshape(-1),
-                ignore_index=-100,
+        h_pred, y = (h[:, :-1], targets[:, 1:]) if shift else (h, targets)
+        h_pred = h_pred.reshape(-1, h_pred.size(-1))
+        y = y.reshape(-1)
+        n_valid = (y != -100).sum().clamp(min=1)
+
+        if ce_chunk > 0:
+            # 每块单独做激活重算：只保存该块的输入 h（N×d），反向时再算一遍 logits。
+            # 只切块不重算的话，autograd 仍会为每块保留反向用的 logits，显存一点没省。
+            logits = None
+            total = sum(
+                checkpoint(self._loss_sum, h_pred[i : i + ce_chunk], y[i : i + ce_chunk], z_loss, use_reentrant=False)
+                for i in range(0, h_pred.size(0), ce_chunk)
             )
+        else:
+            logits = self.lm_head(h)
+            flat = (logits[:, :-1] if shift else logits).reshape(-1, logits.size(-1))
+            total = self._loss_from_logits(flat, y, z_loss)
 
-        return {"logits": logits, "loss": loss, "kv_caches": new_caches}
+        return {"logits": logits, "loss": total / n_valid, "kv_caches": new_caches}
+
+    def _loss_sum(self, h: torch.Tensor, y: torch.Tensor, z_loss: float) -> torch.Tensor:
+        return self._loss_from_logits(self.lm_head(h), y, z_loss)
+
+    @staticmethod
+    def _loss_from_logits(logits: torch.Tensor, y: torch.Tensor, z_loss: float) -> torch.Tensor:
+        """返回整块的 loss 之和（不是均值），由调用方统一除以有效 token 数。"""
+        # bf16/fp16 升到 fp32 再做 softmax；fp32/fp64 保持原精度（不能把 fp64 降成 fp32）
+        if logits.dtype in (torch.float16, torch.bfloat16):
+            logits = logits.float()
+        total = F.cross_entropy(logits, y, ignore_index=-100, reduction="sum")
+        if z_loss > 0:
+            lse = torch.logsumexp(logits, dim=-1)
+            total = total + z_loss * lse[y != -100].pow(2).sum()
+        return total
 
     # ---- 工具方法 ----
 
