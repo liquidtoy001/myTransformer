@@ -95,7 +95,8 @@ class Transformer(nn.Module):
 
         if ce_chunk > 0:
             # 每块单独做激活重算：只保存该块的输入 h（N×d），反向时再算一遍 logits。
-            # 只切块不重算的话，autograd 仍会为每块保留反向用的 logits，显存一点没省。
+            # 只切块不重算只能省一半左右：每块的 log_softmax 输出仍要留到反向，
+            # 加起来还是一整份 fp32 logits（实测 3.32 → 1.57 GiB；加重算后 0.72 GiB）。
             logits = None
             total = sum(
                 checkpoint(self._loss_sum, h_pred[i : i + ce_chunk], y[i : i + ce_chunk], z_loss, use_reentrant=False)

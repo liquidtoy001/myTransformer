@@ -76,7 +76,19 @@ log_softmax 中间量                     ≈ 4.00 GiB
 
 而 250M 模型本身的训练状态才 3.5 GB。**loss 的显存是模型的三倍。**
 
-做法：把序列切成若干块，逐块算 `lm_head` + `cross_entropy` 并累加，只保留当前块的 logits。峰值显存降到 `1/n_chunks`，代价是多几次 kernel 启动（<2% 时间）。P4 实现时一并做掉。
+做法：把序列切成若干块，逐块算 `lm_head` + `cross_entropy` 并累加，**每块都做激活重算**（`torch.utils.checkpoint`），前向只保存该块的输入 `h`，反向时再算一遍这一块的 logits。
+
+**只切块、不重算是不够的。** 实测（vocab 32768，4×2048）：
+
+| 方式 | 峰值显存 |
+|---|---|
+| 不分块 | 3.32 GiB |
+| 只切块 | 1.57 GiB |
+| 切块 + 激活重算 | **0.72 GiB** |
+
+只切块能省掉那几个同时存在的完整大张量，但每块的 `log_softmax` 输出都要留到反向，加起来仍是一整份 fp32 logits（1.00 GiB）。
+
+代价：反向时多算一遍 lm_head 的前向，每 token 多 `2·d·V` FLOPs，对 250M 约 **+3.6%** 计算量。已在 `Transformer.forward(..., ce_chunk=...)` 实现，见 `docs/learn/p4-1-chunked-loss.md`。
 
 ---
 

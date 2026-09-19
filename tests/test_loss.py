@@ -91,5 +91,11 @@ def test_chunked_ce_reduces_peak_memory():
         return torch.cuda.max_memory_allocated() / 2**30
 
     plain, chunked = peak(), peak(ce_chunk=1024)
-    # 4×2048×32768 的 logits：bf16 0.5 GiB、fp32 1 GiB，加上 softmax 中间量与梯度
-    assert chunked < plain * 0.5, f"分块 {chunked:.2f} GiB vs 不分块 {plain:.2f} GiB"
+    full_fp32_logits = ids.numel() * cfg.vocab_size * 4 / 2**30  # 1.00 GiB
+    # 判据必须能区分"有没有做激活重算"：只切块不重算时，每块的 log_softmax 输出
+    # 都要留到反向，加起来正好是一整份 fp32 logits，峰值（实测 1.57 GiB）必然超过它；
+    # 做了重算才能压到它以下（实测 0.72 GiB）。只写"比不分块少一半"是区分不出来的。
+    assert chunked < full_fp32_logits, (
+        f"分块 {chunked:.2f} GiB 没压到一整份 fp32 logits（{full_fp32_logits:.2f} GiB）以下，"
+        f"很可能没做激活重算；不分块为 {plain:.2f} GiB"
+    )
