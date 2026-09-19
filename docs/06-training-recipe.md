@@ -5,50 +5,42 @@
 ## 一、预训练超参（250M 主线）
 
 ```yaml
-# configs/train/pretrain_250m.yaml
-# ---- 数据 ----
-seq_len:              2048
-global_batch_tokens:  524288         # 0.5M tokens/step
-micro_batch_size:     16             # 每卡
-grad_accum_steps:     2              # 8 卡 × 16 × 2048 × 2 = 524288 ✓
-max_steps:            18000          # = 9.437B tokens = 39.9 tokens/param
+# configs/train/pretrain_250m.yaml（与仓库中的文件一致；tests/test_trainer.py 保证它能被加载）
+model: configs/model/250m.yaml
+train_data: data/tokens/main/train_*.bin    # P2 产出，上传到对象存储，H100 机器开机后拉取到这里
+val_data: data/tokens/main/val_*.bin
+run_dir: runs/pretrain_250m
 
-# ---- 优化器 ----
-optimizer:            adamw_fused
-lr:                   7.0e-4         # 峰值
-betas:                [0.9, 0.95]
-eps:                  1.0e-8
-weight_decay:         0.1            # 只作用于 2D 权重，norm/bias/embedding 不衰减
-grad_clip:            1.0
+seq_len: 2048
+global_batch_tokens: 524288     # 0.5M tokens/step，与硬件无关的常量
+micro_batch_size: 16            # 8 卡 × 16 × 2048 × 累积 2 = 524288
+max_steps: 18000                # = 9.437B tokens = 39.9 tokens/param
 
-# ---- 学习率日程（WSD） ----
-schedule:             wsd
-warmup_steps:         720            # 4%
-stable_lr_until:      16200          # 90%
-decay_to:             0.0            # 最后 10%（0.94B tokens）线性衰减到 0
+lr: 7.0e-4                      # 6e-4 × sqrt(1280/1024) ≈ 6.7e-4，取整；P5 用 ladder_s2 扫描确认
+betas: [0.9, 0.95]
+eps: 1.0e-8
+weight_decay: 0.1
+grad_clip: 1.0
 
-# ---- 缩放律分叉点 ----
-scaling_fork_step:    9021           # = 4.73B tokens = 20 tokens/param
-scaling_fork_decay:   900            # 分叉后衰减到 0 的步数
+schedule: wsd
+warmup_steps: 720               # 4%
+decay_start: 16200              # 90%；最后 10%（0.94B tokens）线性衰减到 0
+min_lr_ratio: 0.0
 
-# ---- 精度与性能 ----
-dtype:                bfloat16
-compile:              true
-grad_checkpointing:   false
-sdpa_backend:         flash
-chunked_ce:           true           # 分块交叉熵，见下
+dtype: bfloat16
+compile: true
+ce_chunk: 4096
+z_loss: 1.0e-4
 
-# ---- 稳定性 ----
-z_loss:               1.0e-4
-init_std:             0.02
-residual_init_scale:  1/sqrt(2*18)
-
-# ---- 日志与存档 ----
-log_every:            10
-eval_every:           250
-sample_every:         1000
-ckpt_every:           1000           # 竞价实例必须勤存
-ckpt_keep:            5
+seed: 0
+log_every: 10
+eval_every: 250
+eval_batches: 16
+ckpt_every: 1000                # 竞价实例随时被抢占
+ckpt_keep: 3
+ckpt_keep_every: 1000           # 每个 checkpoint 都永久保留：step 9000 是缩放律分叉点，
+                                # 其余用于"能力随训练量增长"的中间评测。共 18 份，同步到对象存储
+peak_tflops: 989                # H100 SXM bf16 稠密
 ```
 
 **为什么是这些值**：
@@ -56,7 +48,8 @@ ckpt_keep:            5
 - **LR 7e-4** — 经验规律 LR 大致随 `1/sqrt(d_model)` 缩放。d=1024 比 500M 方案的 d=1280 小，所以从 6e-4 提到 `6e-4 × sqrt(1280/1024) ≈ 6.7e-4`，取整 7e-4。P5 用 `ladder_s2` 扫 {5e-4, 7e-4, 1e-3} 确认。
 - **β₂=0.95 而非 0.999** — LLM 预训练标准做法，二阶矩窗口更短，对分布变化响应更快。
 - **全局 batch 0.5M tokens** — 比 500M 方案的 1M 小一半。模型越小，临界 batch 越小；给太大只是浪费。
-- **WSD 而非 cosine** — ① 稳定段 LR 恒定，可在任意点分叉做退火，缩放律的第 4 个点就是这么白拿的（见 [04-compute.md](04-compute.md) §五）；② 中途想延长训练不用重新规划日程。cosine 一旦定了总步数就锁死。
+- **WSD 而非 cosine** — ① 稳定段 LR 恒定，可在任意点分叉做退火，缩放律的第 4 个点就是这么白拿的：`configs/train/pretrain_250m_fork9000.yaml` 从 step 9000 起步、只改了 `decay_start` 和 `max_steps`（见 [04-compute.md](04-compute.md) §五）；② 中途想延长训练不用重新规划日程。cosine 一旦定了总步数就锁死。
+- **`ckpt_keep_every: 1000`** — 分叉必须有 step 9000 的 checkpoint，只保留最近 3 份的话它在 step 12000 就被删了。干脆每一份都留着，顺便用于中间评测。
 - **z-loss** — `1e-4 · log²(Z)`，防止 logits 整体漂移导致 bf16 下溢出，几乎零成本的保险。
 - **ckpt_every 1000（而非 2000）** — 用竞价实例，抢占是常态；2.5 小时的训练存 18 次不算多。
 

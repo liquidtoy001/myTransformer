@@ -23,11 +23,11 @@ def test_wsd_is_monotone_in_decay():
 
 
 def test_wsd_fork_matches_main_run_until_fork():
-    """缩放律第 4 点：从 step 9021 分叉做 900 步衰减。分叉前两条调度必须完全一样。"""
+    """缩放律第 4 点：从 step 9000 分叉做 900 步衰减。分叉前两条调度必须完全一样。"""
     main = LRSchedule(peak_lr=7e-4, warmup_steps=720, total_steps=18000, decay_start=16200)
-    fork = LRSchedule(peak_lr=7e-4, warmup_steps=720, total_steps=9921, decay_start=9021)
-    assert all(main(i) == fork(i) for i in range(9021))
-    assert fork(9921) == 0.0 and main(9921) == 7e-4
+    fork = LRSchedule(peak_lr=7e-4, warmup_steps=720, total_steps=9900, decay_start=9000)
+    assert all(main(i) == fork(i) for i in range(9000))
+    assert fork(9900) == 0.0 and main(9900) == 7e-4
 
 
 def test_cosine_endpoints():

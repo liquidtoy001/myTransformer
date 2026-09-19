@@ -193,6 +193,22 @@ def test_config_rejects_unknown_keys(env, tmp_path):
         TrainConfig.from_yaml(p)
 
 
+@pytest.mark.parametrize("path", sorted(__import__("glob").glob("configs/train/*.yaml")))
+def test_repo_train_configs_are_valid(path):
+    """仓库里每个训练配置都必须能加载、batch 能整除、引用的模型配置存在。
+
+    pretrain_250m.yaml 曾经是在训练循环写好之前按文档手写的，字段对不上，根本加载不了——
+    这个测试保证这种情况在跑测试时就暴露，而不是等到租了 8×H100 才发现。
+    """
+    from pathlib import Path
+
+    cfg = TrainConfig.from_yaml(path)
+    assert Path(cfg.model).is_file(), f"{path} 引用的模型配置 {cfg.model} 不存在"
+    assert cfg.grad_accum_steps() >= 1
+    from mytransformer.model import ModelConfig
+    assert cfg.seq_len <= ModelConfig.from_yaml(cfg.model).max_seq_len
+
+
 def test_config_rejects_indivisible_batch(env):
     with pytest.raises(ValueError, match="整除"):
         make_cfg(env, global_batch_tokens=100).grad_accum_steps()

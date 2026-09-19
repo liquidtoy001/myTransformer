@@ -1,0 +1,40 @@
+# 缩放律第 4 个点：从主训练 step 9000（4.72B tokens ≈ 20 tokens/param）分叉，
+# 做 900 步线性衰减到 0，得到一个与 ladder_s1/s2/s3 可比的"训到 20× 就收尾"的 250M 模型。
+#
+# 与主训练的唯一区别：run_dir、init_from、max_steps、decay_start。
+# 分叉前两条学习率调度逐步相同（tests/test_schedule.py 保证），
+# 数据流也从主训练在 step 9000 的位置接着读（加载器状态在 checkpoint 里）。
+model: configs/model/250m.yaml
+train_data: data/tokens/main/train_*.bin
+val_data: data/tokens/main/val_*.bin
+run_dir: runs/pretrain_250m_fork9000
+init_from: runs/pretrain_250m/ckpt_00009000.pt
+
+seq_len: 2048
+global_batch_tokens: 524288
+micro_batch_size: 16
+max_steps: 9900
+
+lr: 7.0e-4
+betas: [0.9, 0.95]
+eps: 1.0e-8
+weight_decay: 0.1
+grad_clip: 1.0
+
+schedule: wsd
+warmup_steps: 720
+decay_start: 9000
+min_lr_ratio: 0.0
+
+dtype: bfloat16
+compile: true
+ce_chunk: 4096
+z_loss: 1.0e-4
+
+seed: 0
+log_every: 10
+eval_every: 100
+eval_batches: 16
+ckpt_every: 900
+ckpt_keep: 1
+peak_tflops: 989

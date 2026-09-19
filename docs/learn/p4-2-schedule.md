@@ -25,10 +25,10 @@ WSD 的好处：**稳定段 LR 恒定，所以可以在任意一步"分叉"出�
 
 本项目正好用到这一点：缩放律需要一个"250M 模型只训 20 tokens/param 就收尾"的数据点。有两种拿法：
 
-- 专门再训一个 250M 模型到 4.73B tokens：约 $15
-- 从主训练的 step 9021（正好 4.73B tokens）**分叉**，只跑 900 步的衰减：约 $1.5
+- 专门再训一个 250M 模型到 4.72B tokens：约 $15
+- 从主训练的 step 9000（4.72B tokens，≈20 tokens/param）**分叉**，只跑 900 步的衰减：约 $1.5
 
-用 cosine 就做不到——cosine 在 step 9021 时 LR 已经降了一截，分叉出来的模型和"训到 4.73B 就收尾"的模型不等价。
+用 cosine 就做不到——cosine 在 step 9000 时 LR 已经降了一截，分叉出来的模型和"训到 4.72B 就收尾"的模型不等价。
 
 ## 3. 怎么读代码
 
@@ -63,7 +63,7 @@ return peak + (floor - peak) * frac
 
 `frac` 从 0 走到 1，LR 从 `peak` 线性走到 `floor`。`max(1, ...)` 防止衰减段长度为 0 时除以零。
 
-**分叉不需要特殊代码**：分叉就是另一个 `LRSchedule`，只是 `decay_start=9021, total_steps=9921`。在 9021 之前，两条调度在每一步都相同（测试保证了这一点），所以分叉出来的模型在分叉点之前和主训练完全一样。
+**分叉不需要特殊代码**：分叉就是另一个 `LRSchedule`，只是 `decay_start=9000, total_steps=9900`。在 9000 之前，两条调度在每一步都相同（测试保证了这一点），所以分叉出来的模型在分叉点之前和主训练完全一样。
 
 ## 4. 怎么验证它是对的
 
@@ -75,7 +75,7 @@ python -m pytest tests/test_schedule.py -v
 |---|---|
 | `test_wsd_shape` | 四个阶段的关键点：第 0 步、warmup 最后一步、整个稳定段、衰减中点、终点、远远超过终点 |
 | `test_wsd_is_monotone_in_decay` | 用主线的真实参数，衰减段 1800 步逐步不增 |
-| `test_wsd_fork_matches_main_run_until_fork` | **分叉前 9021 步，分叉调度与主调度逐步相同**；分叉在 9921 降到 0，主调度此时仍在峰值 |
+| `test_wsd_fork_matches_main_run_until_fork` | **分叉前 9000 步，分叉调度与主调度逐步相同**；分叉在 9900 降到 0，主调度此时仍在峰值 |
 | `test_cosine_endpoints` | cosine 的起点、中点、终点 |
 | `test_rejects_bad_config` | 未知类型、`decay_start` 早于 warmup 结束，都直接报错 |
 
@@ -86,10 +86,10 @@ import matplotlib.pyplot as plt
 from mytransformer.train.schedule import LRSchedule
 
 main = LRSchedule(7e-4, warmup_steps=720, total_steps=18000, decay_start=16200)
-fork = LRSchedule(7e-4, warmup_steps=720, total_steps=9921, decay_start=9021)
+fork = LRSchedule(7e-4, warmup_steps=720, total_steps=9900, decay_start=9000)
 steps = range(18001)
 plt.plot(steps, [main(s) for s in steps], label="主训练")
-plt.plot(range(9922), [fork(s) for s in range(9922)], "--", label="缩放律分叉")
+plt.plot(range(9901), [fork(s) for s in range(9901)], "--", label="缩放律分叉")
 plt.legend(); plt.xlabel("step"); plt.ylabel("lr"); plt.show()
 ```
 

@@ -1,48 +1,37 @@
-# 250M 主线预训练配置。数值依据见 docs/06-training-recipe.md
+# 250M 主线预训练（P6，8×H100 竞价）。数值依据见 docs/06-training-recipe.md §一
+# 注意：多卡 DDP 尚未实现（P4 待办），当前只能单卡运行这个配置。
 model: configs/model/250m.yaml
+train_data: data/tokens/main/train_*.bin    # P2 产出，上传到对象存储，H100 机器开机后拉取到这里
+val_data: data/tokens/main/val_*.bin
+run_dir: runs/pretrain_250m
 
-# ---- 数据 ----
-seq_len:              2048
-global_batch_tokens:  524288         # 0.5M tokens/step
-micro_batch_size:     16             # 每卡
-grad_accum_steps:     2              # 8 卡 × 16 × 2048 × 2 = 524288 ✓
-max_steps:            18000          # = 9.437B tokens = 39.9 tokens/param
+seq_len: 2048
+global_batch_tokens: 524288     # 0.5M tokens/step，与硬件无关的常量
+micro_batch_size: 16            # 8 卡 × 16 × 2048 × 累积 2 = 524288
+max_steps: 18000                # = 9.437B tokens = 39.9 tokens/param
 
-# ---- 优化器 ----
-optimizer:            adamw_fused
-lr:                   7.0e-4         # 峰值；比 500M 方案的 6e-4 高，因 d_model 更小
-betas:                [0.9, 0.95]
-eps:                  1.0e-8
-weight_decay:         0.1
-grad_clip:            1.0
+lr: 7.0e-4                      # 6e-4 × sqrt(1280/1024) ≈ 6.7e-4，取整；P5 用 ladder_s2 扫描确认
+betas: [0.9, 0.95]
+eps: 1.0e-8
+weight_decay: 0.1
+grad_clip: 1.0
 
-# ---- 学习率日程（WSD） ----
-schedule:             wsd
-warmup_steps:         720            # 4%
-stable_lr_until:      16200          # 90%
-decay_to:             0.0            # 最后 10%（0.94B tokens）线性衰减到 0
+schedule: wsd
+warmup_steps: 720               # 4%
+decay_start: 16200              # 90%；最后 10%（0.94B tokens）线性衰减到 0
+min_lr_ratio: 0.0
 
-# ---- 缩放律分叉点 ----
-# 在 20x Chinchilla 处分叉出一支做短衰减，得到与 30M/60M/120M 可比的
-# 第 4 个缩放律数据点，成本约 $1.4 而非重训一次的 $11。
-# 这是选 WSD 而非 cosine 的实际收益。
-scaling_fork_step:    9021           # = 4.73B tokens = 20 tokens/param
-scaling_fork_decay:   900            # 分叉后衰减到 0 的步数
+dtype: bfloat16
+compile: true
+ce_chunk: 4096
+z_loss: 1.0e-4
 
-# ---- 精度与性能 ----
-dtype:                bfloat16
-compile:              true
-grad_checkpointing:   false
-sdpa_backend:         flash
-chunked_ce:           true           # 分块交叉熵，避免 logits 峰值显存
-
-# ---- 稳定性 ----
-z_loss:               1.0e-4
-init_std:             0.02
-
-# ---- 日志与存档 ----
-log_every:            10
-eval_every:           250
-sample_every:         1000
-ckpt_every:           1000
-ckpt_keep:            5
+seed: 0
+log_every: 10
+eval_every: 250
+eval_batches: 16
+ckpt_every: 1000                # 竞价实例随时被抢占
+ckpt_keep: 3
+ckpt_keep_every: 1000           # 每个 checkpoint 都永久保留：step 9000 是缩放律分叉点，
+                                # 其余用于"能力随训练量增长"的中间评测。共 18 份，同步到对象存储
+peak_tflops: 989                # H100 SXM bf16 稠密

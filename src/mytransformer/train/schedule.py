@@ -2,8 +2,8 @@
 
 WSD = warmup → stable（恒定峰值）→ decay（线性降到 min）。
 选它而不选 cosine，是因为稳定段 LR 恒定，可以在任意一步分叉做退火：
-缩放律的第 4 个点就是从主训练的 step 9021 分叉、做 900 步衰减得到的——
-那就是一个 decay_start=9021、total_steps=9921 的 WSD，不需要任何特殊逻辑。
+缩放律的第 4 个点就是从主训练的 step 9000 分叉、做 900 步衰减得到的——
+那就是一个 decay_start=9000、total_steps=9900 的 WSD，不需要任何特殊逻辑。
 """
 
 from __future__ import annotations
