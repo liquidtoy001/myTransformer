@@ -1,3 +1,6 @@
 # shell 脚本在任何平台检出都必须是 LF：CRLF 会让 Linux 上的 bash 报 $'\r': command not found
 *.sh     text eol=lf
 *.sbatch text eol=lf
+
+# 分词器文件不做换行转换，各平台检出逐字节一致
+tokenizer/*.json -text

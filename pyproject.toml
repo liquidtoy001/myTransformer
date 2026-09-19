@@ -17,6 +17,7 @@ dependencies = [
 data = [
     "datasets>=3.0",
     "fasttext-wheel>=0.9.2",
+    "zstandard>=0.22",     # DCLM 是 .jsonl.zst
 ]
 # 训练时的日志
 train = [

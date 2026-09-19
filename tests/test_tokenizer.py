@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import random
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -113,3 +114,16 @@ def test_training_refuses_to_undershoot_vocab():
     """语料太少时训练器会默默提前停下（这里只能到 427）。必须报错，不能交出一个缺了一截的词表。"""
     with pytest.raises(ValueError, match="语料太少"):
         train_bpe(CORPUS, vocab_size=600)
+
+
+MT32K = Path(__file__).resolve().parents[1] / "tokenizer" / "mt32k.json"
+MT32K_FINGERPRINT = "0a87b9848bf6d598"  # 见 reports/tokenizer.md；换了分词器要同时改这里和所有数据分片
+
+
+def test_committed_tokenizer_is_the_reported_one():
+    """仓库里的 mt32k.json 就是报告里评测的那一个：词表、特殊 token、指纹都对得上。"""
+    tok = Tokenizer.from_file(MT32K)
+    assert tok.vocab_size == 32768
+    assert tok.fingerprint == MT32K_FINGERPRINT
+    assert tok.decode(tok.encode("你好，world 2026 🦓")) == "你好，world 2026 🦓"
+    assert len(tok.encode("2026")) == 4

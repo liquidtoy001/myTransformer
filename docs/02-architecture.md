@@ -210,7 +210,7 @@ out   = Wo · out
 
 | 模块 | 文件 | 职责 | 关键接口 |
 |---|---|---|---|
-| `tokenizer/` | `train_bpe.py`<br>`tokenizer.py`<br>`analyze.py` | 训练 BPE、编解码、fertility 分析 | `Tokenizer.encode/decode` |
+| `tokenizer/` | `train_bpe.py`<br>`tokenizer.py` | 训练 BPE、编解码（抽样和 fertility 分析在 `scripts/sample_tokenizer_corpus.py`、`scripts/tokenizer_report.py`） | `Tokenizer.encode/decode` |
 | `data/` | `download.py`<br>`filter.py`<br>`dedup.py`<br>`tokenize_shard.py`<br>`loader.py` | 原始文本 → 定长 uint16 分片 → 采样器 | `ShardDataset`，输出 `.bin` + `.idx` |
 | `model/` | `config.py`<br>`rope.py`<br>`norm.py`<br>`attention.py`<br>`mlp.py`<br>`block.py`<br>`transformer.py` | 纯模型 | `Transformer(cfg).forward(ids, targets=None)` |
 | `train/` | `optim.py`<br>`schedule.py`<br>`checkpoint.py`<br>`dist.py`<br>`trainer.py`<br>`pretrain.py` | 训练循环、AdamW/Muon、WSD 调度、断点续训 | `Trainer.fit()` |

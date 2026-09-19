@@ -1,0 +1,187 @@
+{
+ "mt16k": {
+  "vocab_size": 16384,
+  "code": {
+   "tokens": 708492,
+   "bytes_per_token": 2.909567080503379
+  },
+  "en_web": {
+   "tokens": 516884,
+   "bytes_per_token": 3.8985575100022443,
+   "tokens_per_word": 1.5701405849402787
+  },
+  "en_web_dclm": {
+   "tokens": 544427,
+   "bytes_per_token": 3.674075679567692,
+   "tokens_per_word": 1.5844790454016298
+  },
+  "en_wiki": {
+   "tokens": 567376,
+   "bytes_per_token": 3.5269997321000535,
+   "tokens_per_word": 1.7837132608374437
+  },
+  "math": {
+   "tokens": 625858,
+   "bytes_per_token": 3.202029853417229,
+   "tokens_per_word": 1.8480368273878598
+  },
+  "zh_web": {
+   "tokens": 563005,
+   "bytes_per_token": 3.5538920613493663,
+   "tokens_per_char": 0.7867219835837872
+  },
+  "zh_wiki": {
+   "tokens": 642600,
+   "bytes_per_token": 3.1159819483348894,
+   "tokens_per_char": 0.8418818535550053
+  }
+ },
+ "mt32k": {
+  "vocab_size": 32768,
+  "code": {
+   "tokens": 651587,
+   "bytes_per_token": 3.1636680903701273
+  },
+  "en_web": {
+   "tokens": 476511,
+   "bytes_per_token": 4.228867749118069,
+   "tokens_per_word": 1.447499362082164
+  },
+  "en_web_dclm": {
+   "tokens": 505934,
+   "bytes_per_token": 3.953610549992687,
+   "tokens_per_word": 1.4724505238649592
+  },
+  "en_wiki": {
+   "tokens": 518205,
+   "bytes_per_token": 3.8616667149101223,
+   "tokens_per_word": 1.6291297663846684
+  },
+  "math": {
+   "tokens": 586652,
+   "bytes_per_token": 3.416021764180468,
+   "tokens_per_word": 1.732269142298641
+  },
+  "zh_web": {
+   "tokens": 498754,
+   "bytes_per_token": 4.011715194264106,
+   "tokens_per_char": 0.696940055950388
+  },
+  "zh_wiki": {
+   "tokens": 565428,
+   "bytes_per_token": 3.541264316588496,
+   "tokens_per_char": 0.7407774240459065
+  }
+ },
+ "mt48k": {
+  "vocab_size": 49152,
+  "code": {
+   "tokens": 626820,
+   "bytes_per_token": 3.288671388915478
+  },
+  "en_web": {
+   "tokens": 460472,
+   "bytes_per_token": 4.37616619468719,
+   "tokens_per_word": 1.3987776279177146
+  },
+  "en_web_dclm": {
+   "tokens": 489564,
+   "bytes_per_token": 4.085811048197988,
+   "tokens_per_word": 1.4248079161816065
+  },
+  "en_wiki": {
+   "tokens": 497645,
+   "bytes_per_token": 4.021209898622512,
+   "tokens_per_word": 1.5644933618789827
+  },
+  "math": {
+   "tokens": 571098,
+   "bytes_per_token": 3.5090579900472423,
+   "tokens_per_word": 1.6863412084651022
+  },
+  "zh_web": {
+   "tokens": 467181,
+   "bytes_per_token": 4.282834704322307,
+   "tokens_per_char": 0.6528211348259026
+  },
+  "zh_wiki": {
+   "tokens": 531074,
+   "bytes_per_token": 3.7703408564531498,
+   "tokens_per_char": 0.6957696288435588
+  }
+ },
+ "mt64k": {
+  "vocab_size": 65536,
+  "code": {
+   "tokens": 610894,
+   "bytes_per_token": 3.3744070166018982
+  },
+  "en_web": {
+   "tokens": 451416,
+   "bytes_per_token": 4.463957857054247,
+   "tokens_per_word": 1.3712681806583311
+  },
+  "en_web_dclm": {
+   "tokens": 480435,
+   "bytes_per_token": 4.16344770884719,
+   "tokens_per_word": 1.3982392316647265
+  },
+  "en_wiki": {
+   "tokens": 485740,
+   "bytes_per_token": 4.119765718285502,
+   "tokens_per_word": 1.5270664943867558
+  },
+  "math": {
+   "tokens": 562689,
+   "bytes_per_token": 3.5614984476327067,
+   "tokens_per_word": 1.6615110685907146
+  },
+  "zh_web": {
+   "tokens": 447368,
+   "bytes_per_token": 4.472512562364765,
+   "tokens_per_char": 0.6251351948062837
+  },
+  "zh_wiki": {
+   "tokens": 509568,
+   "bytes_per_token": 3.929465743531776,
+   "tokens_per_char": 0.6675942302401446
+  }
+ },
+ "mt32k_digits3": {
+  "vocab_size": 32768,
+  "code": {
+   "tokens": 635634,
+   "bytes_per_token": 3.2430691246849603
+  },
+  "en_web": {
+   "tokens": 465649,
+   "bytes_per_token": 4.327512783233724,
+   "tokens_per_word": 1.4145038214316092
+  },
+  "en_web_dclm": {
+   "tokens": 497671,
+   "bytes_per_token": 4.019253683658481,
+   "tokens_per_word": 1.4484022118742723
+  },
+  "en_wiki": {
+   "tokens": 498276,
+   "bytes_per_token": 4.01611757339306,
+   "tokens_per_word": 1.5664770958888605
+  },
+  "math": {
+   "tokens": 565423,
+   "bytes_per_token": 3.544277470141823,
+   "tokens_per_word": 1.6695840383156018
+  },
+  "zh_web": {
+   "tokens": 493213,
+   "bytes_per_token": 4.056784796832201,
+   "tokens_per_char": 0.6891972712308247
+  },
+  "zh_wiki": {
+   "tokens": 541768,
+   "bytes_per_token": 3.6959178098374212,
+   "tokens_per_char": 0.7097800311808093
+  }
+ }
+}

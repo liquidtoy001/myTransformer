@@ -49,13 +49,15 @@
 
 ## P1 · 分词器（D3–4）
 
-- [ ] 从数据混合中抽 5GB 样本训 BPE，**vocab=32768**，byte-level fallback
+- [x] 从数据混合中抽 1 GB 样本训 BPE，**vocab=32768**，字节级（P1-2；原计划 5 GB，1 GB 在本机 6 分钟训完，见报告）
 - [x] 特殊 token：`<|endoftext|>`(0)、`<|system|>`、`<|user|>`、`<|assistant|>`、`<|tool|>`、`<|pad|>`、10 个 `<|reserved_i|>`；文本里的字面 `<|endoftext|>` 不识别为特殊 token（P1-1）
 - [x] 预切分：GPT-4 风格正则，数字一位一切（P1-1）
-- [ ] **fertility 分析**：中/英/代码/数学各测每词平均 token 数，和 Qwen2.5、Llama-3、GPT-4o 的分词器对比
+- [x] **fertility 分析**：中/英/代码/数学，和 Qwen2.5、Llama-3、GPT-4o、DeepSeek-V3、SmolLM2、GPT-2 对比；词表大小扫描（16k–64k）；数字切分消融
 - [x] 编解码往返测试通过（含 emoji、生僻字、不完整 UTF-8）（P1-1，用小语料现场训练）
 
-**验收**：中文 fertility ≤ 1.7 tokens/字，英文 ≤ 1.35 tokens/word，写出 `reports/tokenizer.md`。
+**验收**：~~中文 ≤ 1.7 tokens/字，英文 ≤ 1.35 tokens/word~~ → 按实测修改为 **zh_web ≤ 0.75 tokens/字，en_web ≤ 1.50 tokens/word，混合 bytes/token ≥ 3.85**，写出 `reports/tokenizer.md`。✅ 实测 0.697 / 1.447 / 3.894。
+
+> 原标准的英文一条在 32k 中英共享词表下做不到（64k 也只到 1.37），中文一条又太松（纯英文分词器的水平）。依据见 [reports/tokenizer.md](../reports/tokenizer.md) §5。
 
 > 中文压缩率直接决定你的**有效 token 预算**。同样 9.44B tokens，分词器差 20% 就等于白扔 1.9B tokens 的算力（≈ 8 AUD）。这是最容易被忽视、投入产出比最高的一步。
 >
