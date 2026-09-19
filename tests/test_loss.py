@@ -26,7 +26,7 @@ def loss_and_grads(model, ids, targets, **kw):
 
 @pytest.mark.parametrize("shift", [True, False])
 @pytest.mark.parametrize("z_loss", [0.0, 1e-4])
-@pytest.mark.parametrize("chunk", [7, 64, 1000])  # 不整除、整除、比总长还大
+@pytest.mark.parametrize("chunk", [7, 3, 1000])  # 除不尽、整除（117 与 120 都被 3 整除）、比总长还大
 def test_chunked_ce_matches_plain(shift, z_loss, chunk):
     """分块 + 激活重算只改变显存，不能改变 loss 和梯度。"""
     model = small_model()
