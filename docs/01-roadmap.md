@@ -97,17 +97,22 @@
 
 ## P4 · 训练框架 + 冒烟（D13–16）
 
-- [ ] AdamW（fused）、WSD 学习率、梯度裁剪、梯度累积
-- [ ] bf16 混合精度 + `torch.compile`
-- [ ] 梯度检查点（可开关）
-- [ ] checkpoint 保存/恢复（含 dataloader 状态和 RNG）
-- [ ] DDP 单机多卡；FSDP 路径预留
-- [ ] W&B 日志：loss / grad_norm / lr / MFU / 生成样本
-- [ ] **分块交叉熵**（见 [06-training-recipe.md](06-training-recipe.md) §一）——不做的话 loss 的显存是模型的三倍
-- [ ] **跨设备一致性测试**（CPU fp32 vs GPU bf16，误差 < 1e-2）
-- [ ] **接力续跑**：启动即从最新 checkpoint 恢复；收到 SLURM `USR1` 或到 `--max-minutes` 时存档退出；续跑后用固定 batch 核对 loss（见 [09-rangpur.md](09-rangpur.md) §4.2）
-- [ ] **冒烟实验**：`ladder_s1` × 0.3B tokens，先本地跑通，再到 Rangpur `a100-test`（≤20 分钟）确认环境与 `$TMPDIR`
-- [ ] `scripts/rangpur/` 下的 `smoke.sbatch` / `train.sbatch` / `data.sbatch`
+- [x] AdamW（CUDA 上 fused）、WSD 学习率、梯度裁剪、梯度累积
+- [x] bf16 混合精度
+- [ ] `torch.compile`：开关已接入；Windows 没有 triton，待在 Rangpur（Linux）上验证
+- [x] checkpoint 原子写入、续跑（含加载器状态、优化器状态、RNG）
+- [x] **分块交叉熵**（见 [06-training-recipe.md](06-training-recipe.md) §一）：实测峰值 3.32 → 0.72 GiB
+- [x] **接力续跑**：启动即从最新 checkpoint 恢复；收到 SLURM `USR1`/`TERM` 或到 `--max-minutes` 时存档退出
+- [x] **续跑自检**：固定小 batch 上比对 loss 与 logits 均方根，并比对下一个 batch
+- [x] NaN 保护：梯度非有限时跳过更新
+- [x] 日志：`metrics.jsonl`（loss / val_loss / lr / grad_norm / tok/s / MFU / 显存）
+- [x] **本地冒烟**：合成马尔可夫数据（理论下界 ln4），`ladder_s1` × 19.7M tokens，中途存档再续跑，val loss 1.421（见 [learn/p4-5](learn/p4-5-trainer.md) §3）
+- [ ] DDP 单机多卡（P6 要用）；FSDP 路径预留
+- [ ] W&B：目前只写 jsonl
+- [ ] **跨设备一致性测试**（CPU fp32 vs GPU bf16）
+- [ ] `scripts/rangpur/` 下的 `smoke.sbatch` / `train.sbatch` / `data.sbatch`，并在 `a100-test` 上跑一次冒烟
+- [ ] 真实文本冒烟：等 P1 分词器、P2 数据就绪后，`ladder_s1` × 0.3B tokens
+- 梯度检查点：250M 在 A100/H100 上显存充足，暂不实现
 
 **验收**：
 - `test_overfit`（单 batch 过拟合到 loss<0.1）通过
