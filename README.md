@@ -69,6 +69,7 @@
 | [07-evaluation.md](docs/07-evaluation.md) | 评测任务选择与基线对照 | 阶段 P8 |
 | [08-report-template.md](docs/08-report-template.md) | 技术报告骨架（照 OLMo/SmolLM2） | 阶段 P8 |
 | [09-rangpur.md](docs/09-rangpur.md) | Rangpur 集群：提交规则、存储预算、作业模板 | 第一次上 Rangpur 前 |
+| [learn/](docs/learn/README.md) | **学习笔记**：每个部分怎么读、怎么验证、怎么自己从零搭，附"故意改错"练习 | 每完成一部分 |
 
 ---
 
