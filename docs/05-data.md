@@ -59,8 +59,8 @@
 FineWeb-Edu / CCI3-HQ 已经筛过，直接用。DCLM 部分自己跑一个 fastText 分类器（正例=Wikipedia+教科书，负例=随机 CC）。
 
 ### 2.4 去重
-- **文档级**：MinHash-LSH，5-gram，128 permutation，Jaccard 阈值 0.8。用 `datatrove` 或 `text-dedup`
-- **段落级**：对留下的文档做精确子串去重（suffix array 或简单的 hash 段落集合）
+- **文档级**：MinHash-LSH，5-gram（中文按字），**256 个哈希 / 32 段**（128 个在中文维基模板条目上精确率只有 51–84%，见 [learn/p2-2-dedup.md](learn/p2-2-dedup.md)），Jaccard 阈值 0.8。自己实现：`src/mytransformer/data/dedup.py`
+- **段落级**：出现在 ≥ 3 篇文档里的段落（≥ 30 字符）只保留第一次出现；代码不做
 - 跨子集也要去重（Wikipedia 在网页语料里出现无数次）
 
 > 去重是**性价比最高**的一步。重复数据不仅浪费算力，还会导致记忆化和 loss 曲线异常。

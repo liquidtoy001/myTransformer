@@ -71,7 +71,7 @@
 
 - [ ] 下载各子集（FineWeb-Edu / DCLM / 中文语料 / 代码 / 数学 / 百科）
 - [x] 质量过滤：Gopher 规则（照 datatrove 实现）+ 中文汉字占比 + 代码 StarCoder 规则，在真实文档上校准（P2-1）。来源已做过语言识别和质量分类，不再重复
-- [ ] 去重：文档级 MinHash-LSH（Jaccard 0.8）+ 段落级精确去重
+- [x] 去重：文档级 MinHash-LSH（Jaccard 0.8，256 个哈希 / 32 段，暴力枚举校准）+ 段落级精确去重（代码不做）（P2-2）
 - [ ] **从所有语料中剔除评测集**（decontamination）——n-gram 匹配，否则评测分数是假的
 - [ ] 分词打包成 uint16 shard，写 `meta.json`
 - [ ] 留出 val set（每个子集各 1M tokens，**训练集中必须删掉**）
