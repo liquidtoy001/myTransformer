@@ -15,7 +15,7 @@ from torch import nn
 
 from .attention import Attention
 from .config import ModelConfig
-from .mlp import SwiGLU
+from .mlp import build_mlp
 from .norm import RMSNorm
 
 
@@ -26,7 +26,7 @@ class TransformerBlock(nn.Module):
         self.input_layernorm = RMSNorm(cfg.d_model, cfg.norm_eps)
         self.self_attn = Attention(cfg)
         self.post_attention_layernorm = RMSNorm(cfg.d_model, cfg.norm_eps)
-        self.mlp = SwiGLU(cfg)
+        self.mlp = build_mlp(cfg)
 
     def forward(
         self,

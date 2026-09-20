@@ -1,0 +1,29 @@
+# 缩放律第 1 个点：ladder_s1 × Chinchilla 20 倍 tokens（189M）。
+# 三个点必须共用同一个分词器、同样的序列长度和调度形状，否则每 token 的 loss 不可比。
+# 学习率按 2.0e-3 × (512 / d_model) 定：小模型能吃更大的学习率，这个规则对三个点一致。
+model: configs/model/ladder_s1.yaml
+train_data: data/p5/mix/train_*.bin
+val_data: data/p5/mix/val_*.bin
+tokenizer: tokenizer/mt32k.json
+run_dir: runs/p5/ladder_s1
+
+seq_len: 2048
+global_batch_tokens: 524288
+micro_batch_size: 16
+max_steps: 360                     # × 524288 ≈ 189M tokens = 20 × 非嵌入参数
+
+lr: 2.7e-3
+warmup_steps: 100
+schedule: wsd
+
+dtype: bfloat16
+compile: true
+ce_chunk: 4096
+z_loss: 1.0e-4
+
+seed: 0
+log_every: 20
+eval_every: 100
+eval_batches: 14
+ckpt_every: 250
+ckpt_keep: 2

@@ -27,6 +27,8 @@ class ModelConfig:
     tie_embeddings: bool = True
     attention_bias: bool = False
     dropout: float = 0.0
+    activation: str = "swiglu"              # swiglu | gelu（消融 A2）
+    qk_norm: bool = False                   # 对 q、k 做 RMSNorm 再进 RoPE（消融 A6）
     init_std: float = 0.02
 
     def __post_init__(self) -> None:
@@ -58,8 +60,10 @@ class ModelConfig:
         d, kv = self.d_model, self.n_kv_heads * self.head_dim
 
         attn = d * d * 2 + d * kv * 2  # Wq, Wo, Wk, Wv
-        mlp = 3 * d * self.ffn_hidden  # gate, up, down
+        mlp = (3 if self.activation == "swiglu" else 2) * d * self.ffn_hidden  # gate, up, down
         norms = 2 * d  # 每层两个 RMSNorm
+        if self.qk_norm:
+            norms += 2 * self.head_dim  # q、k 各一个 RMSNorm（按 head_dim）
         per_layer = attn + mlp + norms
 
         # 最终 RMSNorm 也算非嵌入参数，保证 total - embedding == non_embedding

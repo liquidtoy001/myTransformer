@@ -1,0 +1,30 @@
+# 消融与种子方差的公共底座：ladder_s2（39M，非嵌入 22.55M）× 0.79B tokens。
+# 每组消融只改一行，其余完全一致——这是"对照实验"的全部意义。
+model: configs/model/ladder_s2.yaml
+train_data: data/p5/mix/train_*.bin
+val_data: data/p5/mix/val_*.bin
+tokenizer: tokenizer/mt32k.json
+run_dir: runs/p5/a1_muon
+
+seq_len: 2048
+global_batch_tokens: 524288
+micro_batch_size: 16                # A100 40G；显存不够时调小，梯度累积会自动补上
+max_steps: 1507                     # 1507 × 524288 ≈ 0.79B tokens
+
+lr: 2.0e-3                        # AdamW 那一半（嵌入和一维参数）仍用它
+optimizer: muon
+muon_lr: 0.02
+warmup_steps: 100
+schedule: wsd
+
+dtype: bfloat16
+compile: true
+ce_chunk: 4096
+z_loss: 1.0e-4
+
+seed: 0
+log_every: 20
+eval_every: 100
+eval_batches: 14                    # 7 个子集，每个 2 批
+ckpt_every: 250
+ckpt_keep: 2

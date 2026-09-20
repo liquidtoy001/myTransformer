@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from .config import ModelConfig
+from .norm import RMSNorm
 from .rope import apply_rope
 
 
@@ -41,6 +42,15 @@ class Attention(nn.Module):
         self.k_proj = nn.Linear(d, kv_dim, bias=bias)
         self.v_proj = nn.Linear(d, kv_dim, bias=bias)
         self.o_proj = nn.Linear(cfg.n_heads * cfg.head_dim, d, bias=bias)
+        # QK-Norm（消融 A6）：对每个头的 q、k 做 RMSNorm 再进 RoPE。
+        # 作用是防住注意力 logits 变得过大——大模型 loss spike 的常见来源。
+        # 放在 RoPE **之前**（Llama-4、Gemma-2 的做法）。顺序是有讲究的：
+        # RoPE 是旋转、不改变模长，所以归一化里"除以 rms"那部分换序没区别；
+        # 但 RMSNorm 还有一组可学习的逐维权重，它和旋转**不可交换**。
+        # 初始化时权重全是 1，两种顺序输出完全一样；训练之后就会明显不同
+        # （实测差异 3.0，见 tests/test_model.py::test_qk_norm_before_rope_is_not_interchangeable）。
+        self.q_norm = RMSNorm(cfg.head_dim, cfg.norm_eps) if cfg.qk_norm else None
+        self.k_norm = RMSNorm(cfg.head_dim, cfg.norm_eps) if cfg.qk_norm else None
 
     def forward(
         self,
@@ -54,6 +64,9 @@ class Attention(nn.Module):
         q = self.q_proj(x).view(b, t, self.n_heads, self.head_dim).transpose(1, 2)
         k = self.k_proj(x).view(b, t, self.n_kv_heads, self.head_dim).transpose(1, 2)
         v = self.v_proj(x).view(b, t, self.n_kv_heads, self.head_dim).transpose(1, 2)
+
+        if self.q_norm is not None:
+            q, k = self.q_norm(q), self.k_norm(k)
 
         q, k = apply_rope(q, k, cos, sin)
 

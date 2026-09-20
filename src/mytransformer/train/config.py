@@ -32,6 +32,9 @@ class TrainConfig:
     eps: float = 1e-8
     weight_decay: float = 0.1
     grad_clip: float = 1.0
+    optimizer: str = "adamw"                # adamw | muon（消融 A1）
+    muon_lr: float = 0.02                   # Muon 的学习率量级和 AdamW 不同，单列
+    muon_momentum: float = 0.95
 
     # ---- 学习率调度 ----
     schedule: str = "wsd"

@@ -1,0 +1,19 @@
+# 消融 A3 的对照：n_kv_heads = n_heads，即普通多头注意力（MHA）。
+# 注意这会让非嵌入参数从 22.55M 涨到 25.70M（+13.9%）——这 13.9% 正是 GQA 省下的部分，
+# 所以这一组比的是"省下 14% 参数和 KV cache，loss 亏多少"。
+name: mytransformer-s2-mha
+vocab_size:      32768
+d_model:         512
+n_layers:        8
+n_heads:         8
+n_kv_heads:      8
+head_dim:        64
+ffn_hidden:      1408
+max_seq_len:     2048
+rope_theta:      10000.0
+norm_eps:        1.0e-5
+tie_embeddings:  true
+attention_bias:  false
+dropout:         0.0
+expected_params:
+  non_embedding:  25_698_816

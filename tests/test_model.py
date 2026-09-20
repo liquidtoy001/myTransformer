@@ -230,3 +230,79 @@ def test_param_groups_split():
     n_all = sum(p.numel() for p in model.parameters())
     n_grouped = sum(p.numel() for g in groups for p in g["params"])
     assert n_all == n_grouped
+
+
+# ---------------------------------------------------------------- 消融用的开关（P5）
+
+
+def test_gelu_mlp_param_count_and_forward():
+    """activation=gelu 少一个矩阵，count_params 必须跟着变——MFU 和成本估算都从它来。"""
+    swiglu = tiny_cfg()
+    gelu = tiny_cfg(activation="gelu")
+    assert gelu.count_params()["non_embedding"] < swiglu.count_params()["non_embedding"]
+    model = Transformer(gelu)
+    assert model.num_params(non_embedding=True) == gelu.count_params()["non_embedding"]
+    assert not any("gate_proj" in n for n, _ in model.named_parameters())
+    out = model(torch.randint(0, gelu.vocab_size, (2, 8)))["logits"]
+    assert out.shape == (2, 8, gelu.vocab_size) and torch.isfinite(out).all()
+
+
+def test_gelu_ffn_hidden_15x_matches_swiglu_params():
+    """公平对比的办法：GeLU 的 ffn_hidden 取 SwiGLU 的 1.5 倍（3 个矩阵 vs 2 个），参数量对齐。"""
+    swiglu = tiny_cfg(ffn_hidden=128)
+    gelu = tiny_cfg(activation="gelu", ffn_hidden=192)
+    assert gelu.count_params()["non_embedding"] == swiglu.count_params()["non_embedding"]
+
+
+def test_qk_norm_adds_params_and_changes_output():
+    cfg = tiny_cfg()
+    torch.manual_seed(0)
+    plain = Transformer(cfg)
+    torch.manual_seed(0)
+    normed = Transformer(tiny_cfg(qk_norm=True))
+    extra = 2 * cfg.head_dim * cfg.n_layers
+    assert normed.num_params(non_embedding=True) == plain.num_params(non_embedding=True) + extra
+    assert normed.cfg.count_params()["non_embedding"] == normed.num_params(non_embedding=True)
+    ids = torch.randint(0, cfg.vocab_size, (2, 8))
+    assert not torch.allclose(plain(ids)["logits"], normed(ids)["logits"])
+
+
+def test_qk_norm_bounds_attention_logits():
+    """QK-Norm 的作用：把 q、k 的模长归一，注意力打分不会随输入变大而失控。"""
+    cfg = tiny_cfg(qk_norm=True)
+    model = Transformer(cfg)
+    ids = torch.randint(0, cfg.vocab_size, (1, 16))
+    with torch.no_grad():
+        x = model.embed_tokens(ids) * 50  # 人为放大 50 倍
+        attn = model.layers[0].self_attn
+        q = attn.q_norm(attn.q_proj(x).view(1, 16, cfg.n_heads, cfg.head_dim).transpose(1, 2))
+    rms = q.pow(2).mean(-1).sqrt()
+    assert torch.allclose(rms, torch.ones_like(rms), atol=0.2)  # 归一化后接近 1，与输入幅度无关
+
+
+def test_qk_norm_before_rope_is_not_interchangeable():
+    """QK-Norm 放在 RoPE 前还是后：初始化时等价，训练之后不等价。
+
+    RoPE 是旋转，不改变模长，所以"除以 rms"那部分换序没区别；但 RMSNorm 的可学习逐维权重
+    和旋转不可交换。这也解释了为什么把实现里的顺序改掉，模型测试仍然全绿——
+    未训练的模型里权重全是 1。**换序这类错误，未训练的模型测不出来。**
+    """
+    from mytransformer.model.norm import RMSNorm
+    from mytransformer.model.rope import RotaryEmbedding, apply_rope
+
+    torch.manual_seed(0)
+    hd = 16
+    q, k = torch.randn(1, 2, 8, hd), torch.randn(1, 2, 8, hd)
+    cos, sin = RotaryEmbedding(hd, 64, 10000.0)(8)
+    norm = RMSNorm(hd)
+
+    def gap() -> float:
+        before = apply_rope(norm(q), norm(k), cos, sin)
+        qr, kr = apply_rope(q, k, cos, sin)
+        after = (norm(qr), norm(kr))
+        return max((before[i] - after[i]).abs().max().item() for i in range(2))
+
+    assert gap() < 1e-5                      # 权重全为 1：两种顺序一样
+    with torch.no_grad():
+        norm.weight.copy_(torch.randn(hd))   # 模拟训练过的权重
+    assert gap() > 0.5

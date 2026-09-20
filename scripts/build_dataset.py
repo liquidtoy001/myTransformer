@@ -237,7 +237,9 @@ def stage_tokenize(cfg: dict) -> None:
 
 
 def stage_pack(cfg: dict) -> dict:
-    dirs = {s: cfg["dir"] / "docs" / s for s in cfg["weights"]}
+    # docs_from：复用另一份配置已经分好词的 docs/（换配比重新混合时不必重新下载、重新分词）
+    docs_root = Path(cfg.get("docs_from") or cfg["dir"]) / "docs"
+    dirs = {s: docs_root / s for s in cfg["weights"]}
     meta = pack(dirs, cfg["weights"], cfg["dir"] / "mix", total_tokens=cfg["total_tokens"],
                 val_tokens=cfg["val_tokens"], shard_tokens=cfg["shard_tokens"], seed=cfg["seed"])
     print(f"[pack] 训练 {meta['train']['tokens'] / 1e9:.3f}B tokens，{len(meta['train']['shards'])} 个分片", flush=True)

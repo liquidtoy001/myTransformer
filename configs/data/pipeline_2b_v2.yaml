@@ -1,0 +1,29 @@
+# 消融 A4 的对照数据：中文占比从 24% 提到 35%，其余按比例缩放（代码、数学的占比保持不变，
+# 否则比的就不只是中英配比）。不重新下载、不重新分词——直接复用 data/p5/docs 重新混合。
+#
+#   python scripts/build_dataset.py --config configs/data/pipeline_2b_v2.yaml --stages pack
+name: p5_v2_zh35
+out: data/p5_v2
+docs_from: data/p5
+tokenizer: tokenizer/mt32k.json
+eval_sets: data/eval_sets
+decontam_exclude: configs/data/decontam_exclude.json
+
+total_tokens: 790000000             # 只给消融用，和 configs/train/p5/_base_s2.yaml 的 0.79B 对齐
+val_tokens: 1000000
+shard_tokens: 100000000
+seed: 0
+
+weights:                            # 归一化后：中文 35.0%，英文 46.2%，代码 12.5%，数学 6.25%
+  en_web: 33.63
+  en_web_dclm: 10.09
+  en_wiki: 2.52
+  zh_web: 30.40
+  zh_wiki: 4.60
+  code: 12.50
+  math: 6.25
+
+bytes_per_token: {en_web: 4.23, en_web_dclm: 3.95, zh_web: 4.01, code: 3.16, math: 3.42, en_wiki: 3.86, zh_wiki: 3.54}
+loss_factor: 1.35
+yield_factor: {}
+priority: [en_wiki, zh_wiki, math, code, en_web, en_web_dclm, zh_web]

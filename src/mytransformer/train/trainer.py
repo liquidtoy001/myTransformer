@@ -29,6 +29,7 @@ from ..model import ModelConfig, Transformer
 from ..tokenizer import Tokenizer
 from . import checkpoint as ck
 from .config import TrainConfig
+from .muon import Muon, split_params
 from .schedule import LRSchedule
 
 # bf16 稠密峰值（TFLOPS），用来算 MFU。A100/H100/4090 为厂商标称；4070 Ti SUPER 为本机实测。
@@ -84,11 +85,7 @@ class Trainer:
         if cfg.seq_len > self.model_cfg.max_seq_len:
             raise ValueError(f"seq_len={cfg.seq_len} 超过模型的 max_seq_len={self.model_cfg.max_seq_len}")
         self.model = Transformer(self.model_cfg).to(self.device)
-        self.opt = torch.optim.AdamW(
-            self.model.param_groups(cfg.weight_decay),
-            lr=cfg.lr, betas=cfg.betas, eps=cfg.eps,
-            fused=self.device.type == "cuda",
-        )
+        self.opts = self._build_optimizers()
         self.sched = LRSchedule(
             cfg.lr, cfg.warmup_steps, cfg.max_steps,
             kind=cfg.schedule, decay_start=cfg.decay_start, min_lr_ratio=cfg.min_lr_ratio,
@@ -177,10 +174,35 @@ class Trainer:
         self.log(f"训练完成：{self.step} 步，{self.tokens_seen / 1e9:.3f}B tokens")
         return "done"
 
+    def _build_optimizers(self) -> list[torch.optim.Optimizer]:
+        """adamw：全部参数一个 AdamW。muon：二维权重给 Muon，嵌入和一维参数仍给 AdamW（见 muon.py）。"""
+        cfg = self.cfg
+        fused = self.device.type == "cuda"
+        if cfg.optimizer == "adamw":
+            return [torch.optim.AdamW(self.model.param_groups(cfg.weight_decay),
+                                      lr=cfg.lr, betas=cfg.betas, eps=cfg.eps, fused=fused)]
+        if cfg.optimizer == "muon":
+            muon_params, adamw_params = split_params(self.model)
+            return [
+                Muon(muon_params, lr=cfg.muon_lr, momentum=cfg.muon_momentum,
+                     weight_decay=cfg.weight_decay),
+                torch.optim.AdamW(adamw_params, lr=cfg.lr, betas=cfg.betas, eps=cfg.eps,
+                                  weight_decay=0.0, fused=fused),
+            ]
+        raise ValueError(f"optimizer 只能是 adamw 或 muon，得到 {cfg.optimizer!r}")
+
+    def _set_lr(self, lr: float) -> None:
+        """调度给出的是 AdamW 的学习率。Muon 的量级不同（cfg.muon_lr），按同一比例缩放，
+        这样 warmup 和衰减的形状对两者一致。"""
+        ratio = lr / self.cfg.lr if self.cfg.lr else 0.0
+        for opt in self.opts:
+            base = self.cfg.muon_lr if isinstance(opt, Muon) else self.cfg.lr
+            for group in opt.param_groups:
+                group["lr"] = base * ratio
+
     def _train_step(self) -> tuple[torch.Tensor, torch.Tensor, float]:
         lr = self.sched(self.step)
-        for group in self.opt.param_groups:
-            group["lr"] = lr
+        self._set_lr(lr)
 
         total = torch.zeros((), device=self.device)
         for _ in range(self.accum):
@@ -195,7 +217,8 @@ class Trainer:
         # 返回的是裁剪**前**的总范数——它是训练要炸的最灵敏的先行指标
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.grad_clip)
         if torch.isfinite(grad_norm):
-            self.opt.step()
+            for opt in self.opts:
+                opt.step()
             self.nonfinite_streak = 0
         else:
             # 更新一次就可能把权重全毁成 NaN，所以跳过；数据照常消耗，调度照常前进
@@ -203,7 +226,8 @@ class Trainer:
             self.log(f"step {self.step + 1}：梯度范数为 {grad_norm.item()}，跳过这一步的更新（连续第 {self.nonfinite_streak} 次）")
             if self.nonfinite_streak >= MAX_NONFINITE_STREAK:
                 self.stop_reason = "nonfinite"
-        self.opt.zero_grad(set_to_none=True)
+        for opt in self.opts:
+            opt.zero_grad(set_to_none=True)
         return total / self.accum, grad_norm, lr
 
     # ------------------------------------------------------------------ 存档与续跑
@@ -216,7 +240,7 @@ class Trainer:
             self.probe_ids = torch.cat([x[:2, :n], y[:2, n - 1 : n]], dim=1).to(self.device)
         payload = {
             "model": self.model.state_dict(),
-            "optimizer": self.opt.state_dict(),
+            "optimizer": [o.state_dict() for o in self.opts],
             "step": self.step,
             "tokens_seen": self.tokens_seen,
             "loader": self.loader.state_dict(),
@@ -250,7 +274,12 @@ class Trainer:
 
         state = ck.load(path, map_location=self.device)
         self.model.load_state_dict(state["model"])
-        self.opt.load_state_dict(state["optimizer"])
+        saved = state["optimizer"]
+        saved = saved if isinstance(saved, list) else [saved]  # 兼容只有一个优化器时的旧存档
+        if len(saved) != len(self.opts):
+            raise ResumeError(f"存档里有 {len(saved)} 个优化器状态，当前配置有 {len(self.opts)} 个（optimizer 改了？）")
+        for opt, st in zip(self.opts, saved):
+            opt.load_state_dict(st)
         self.step = state["step"]
         self.tokens_seen = state["tokens_seen"]
         self.loader.load_state_dict(state["loader"])

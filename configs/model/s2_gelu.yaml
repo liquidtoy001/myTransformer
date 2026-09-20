@@ -1,0 +1,20 @@
+# 消融 A2 的对照：把 SwiGLU 换成 GeLU。
+# ffn_hidden 取 1408 × 1.5 = 2112（SwiGLU 3 个矩阵、GeLU 2 个），非嵌入参数与 ladder_s2 **完全相等**，
+# 否则比的就不是激活函数，而是参数量。
+name: mytransformer-s2-gelu
+vocab_size:      32768
+d_model:         512
+n_layers:        8
+n_heads:         8
+n_kv_heads:      2
+head_dim:        64
+ffn_hidden:      2112
+max_seq_len:     2048
+rope_theta:      10000.0
+norm_eps:        1.0e-5
+tie_embeddings:  true
+attention_bias:  false
+dropout:         0.0
+activation:      gelu
+expected_params:
+  non_embedding:  22_553_088
