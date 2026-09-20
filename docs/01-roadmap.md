@@ -69,14 +69,18 @@
 
 详见 [05-data.md](05-data.md)。
 
-- [ ] 下载各子集（FineWeb-Edu / DCLM / 中文语料 / 代码 / 数学 / 百科）
+- [x] 下载各子集（FineWeb-Edu / DCLM / chinese-fineweb-edu-v2 / github-code-clean / FineMath / 维基）：11.1 GB 文本、214 万篇（P2-5）
 - [x] 质量过滤：Gopher 规则（照 datatrove 实现）+ 中文汉字占比 + 代码 StarCoder 规则，在真实文档上校准（P2-1）。来源已做过语言识别和质量分类，不再重复
 - [x] 去重：文档级 MinHash-LSH（Jaccard 0.8，256 个哈希 / 32 段，暴力枚举校准）+ 段落级精确去重（代码不做）（P2-2）
 - [x] **从所有语料中剔除评测集**（decontamination）：11 个评测集的 13-gram（汉字算半个词），排除 220 个通用片段（P2-3）。局限：C-Eval 27%、CMMLU 38% 的题太短没进索引
 - [x] 分词打包成 uint16 shard，写 `meta.json`（分词器指纹 + 每个分片的 token 数，训练前核对）；按配比在打包时混合（P2-4）
 - [x] 留出 val set（每个子集各 1M tokens，**训练集中必须删掉**）；训练时每个子集单独报 val loss（P2-4）
 
-**验收**：P5 数据 2B tokens 写入 Rangpur home；P6 数据 ≥10.4B tokens（9.44B + 10% 冗余）上传到对象存储；随机抽 200 条人工过目；`reports/data.md` 写清每一步过滤掉了多少。
+**验收**：
+- [x] P5 数据 **2.000B tokens**（20 个分片，3.8 GB）在本机产出，真实分片冒烟训练通过（`configs/train/smoke_p5.yaml`）→ 传 Rangpur 见 [09-rangpur.md](09-rangpur.md) §把 P5 数据传上去
+- [x] 随机抽 200 条供人工过目（`data/review_sample.txt`）
+- [x] `reports/data.md` 写清每一步过滤掉了多少
+- [ ] P6 数据 ≥10.4B tokens 上传到对象存储 —— **推迟到 P6**：同一条流水线换配置即可（`total_tokens` 调大），现在做只会占着本机磁盘和云存储费用
 
 > **在哪做**：Rangpur `cpu` 分区的 batch 作业。原始数据下载到计算节点本地盘 `$TMPDIR`（约 197 GB，作业结束即失效），分词后 P5 数据写回 home（4 GB），P6 数据逐分片上传对象存储（19 GB，home 放不下）。每个作业只处理若干分片并留 `.done` 标记。模板见 [09-rangpur.md](09-rangpur.md) §4.4。
 

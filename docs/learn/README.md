@@ -16,6 +16,7 @@
 | [p2-1](p2-1-filters.md) | 质量过滤：规则、在真实数据上校准阈值 | `src/mytransformer/data/filters.py`、`scripts/calibrate_filters.py` |
 | [p2-2](p2-2-dedup.md) | 去重：MinHash-LSH、为什么 256 个哈希、段落去重 | `src/mytransformer/data/dedup.py`、`scripts/calibrate_dedup.py` |
 | [p2-3](p2-3-decontam.md) | 去污染：13-gram、中文窗口、通用片段 | `src/mytransformer/data/decontam.py`、`scripts/fetch_eval_sets.py`、`scripts/calibrate_decontam.py` |
+| [p2-5](p2-5-pipeline.md) | 完整流水线：能并行的和不能并行的、可中断重跑、2B tokens 实跑 | `scripts/build_dataset.py`、`src/mytransformer/data/sources.py` |
 | [p2-4](p2-4-pack.md) | 分词打包：验证集、按配比混合、meta.json 核对、分子集 val loss | `src/mytransformer/data/pack.py` |
 | [p4-1](p4-1-chunked-loss.md) | 分块交叉熵 | `src/mytransformer/model/transformer.py` 的 `forward` 后半段 |
 | [p4-2](p4-2-schedule.md) | WSD 学习率调度 | `src/mytransformer/train/schedule.py` |

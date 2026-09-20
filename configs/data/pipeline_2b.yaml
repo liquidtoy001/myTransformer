@@ -1,0 +1,37 @@
+# P5 实验数据：2B tokens。配比取 docs/05-data.md 的 v1（指令类 4% 暂无来源，其余按比例放大）。
+name: p5_2b
+out: data/p5
+tokenizer: tokenizer/mt32k.json
+eval_sets: data/eval_sets
+decontam_exclude: configs/data/decontam_exclude.json
+
+total_tokens: 2000000000
+val_tokens: 1000000
+shard_tokens: 100000000
+seed: 0
+
+weights:
+  en_web: 40
+  en_web_dclm: 12
+  zh_web: 20
+  code: 12
+  math: 6
+  en_wiki: 3
+  zh_wiki: 3
+
+# 每个 token 平均多少字节（mt32k 实测，见 reports/tokenizer.md），用来把目标 token 数换算成要下载的文本量
+bytes_per_token:
+  en_web: 4.23
+  en_web_dclm: 3.95
+  zh_web: 4.01
+  code: 3.16
+  math: 3.42
+  en_wiki: 3.86
+  zh_wiki: 3.54
+# 过滤、去重、去污染会丢掉一部分，多下这么多倍
+loss_factor: 1.35
+# 规划下载量时如果估偏了，可以在这里按子集手工修正（探测已经会套用过滤规则，一般不需要）
+yield_factor: {}
+
+# 跨子集出现重复时，排在前面的子集保留（百科 > 数学/代码 > 网页）
+priority: [en_wiki, zh_wiki, math, code, en_web, en_web_dclm, zh_web]

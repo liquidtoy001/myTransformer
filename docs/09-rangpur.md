@@ -92,6 +92,35 @@
 
 **P7 阶段**：删掉 P5 的数据，腾出空间放 250M 的完整 checkpoint（2.84 GB × 2）。
 
+### 把 P5 数据传上去（P2-5 产出）
+
+本机跑完 `scripts/build_dataset.py` 之后，`data/p5/mix/` 里是约 4 GB 的分片 + `meta.json`。
+
+**1. 本机打包**（分片本身已经是紧凑的二进制，不用压缩，`tar` 只是为了一次传完、好校验）：
+
+```bash
+cd E:/Documents/transformer/data/p5 && tar cf p5_mix.tar mix && sha256sum p5_mix.tar
+```
+
+**2. 传到 Rangpur**（从你的电脑发起，不占 Rangpur 的计算资源）：
+
+```bash
+scp E:/Documents/transformer/data/p5/p5_mix.tar sXXXXXXX@rangpur.compute.eait.uq.edu.au:~/myTransformer/data/
+```
+
+**3. 解包和校验要放在 CPU 交互作业里**（几 GB 的读写不属于登录节点允许的"小文件操作"，见 §登录节点上能做什么）：
+
+```bash
+srun --account=comp3710 --partition=cpu --time=00:30:00 --pty bash
+cd ~/myTransformer/data && sha256sum p5_mix.tar      # 和本机的哈希逐字符比对
+tar xf p5_mix.tar && rm p5_mix.tar                   # 解完就删，home 放不下两份
+exit
+```
+
+**4. 训练前的自动核对**：训练配置里写 `tokenizer: tokenizer/mt32k.json`，`Trainer` 启动时会核对
+`meta.json` 里的分词器指纹，以及每个分片的实际大小是否等于记录值——**传输中断导致的半个文件会在这里被拦住**
+（见 [learn/p2-4-pack.md](learn/p2-4-pack.md) §4）。所以第 3 步的 `sha256sum` 比对不是唯一防线，但仍然建议做。
+
 ### 防止撑爆配额
 
 所有作业开头都设置：

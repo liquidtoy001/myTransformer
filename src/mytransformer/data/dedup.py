@@ -116,9 +116,10 @@ def near_duplicates(sigs: np.ndarray, bands: int = 32, threshold: float = 0.8) -
         # 桶的边界：排序后键值发生变化的位置
         starts = np.flatnonzero(np.r_[True, sorted_keys[1:] != sorted_keys[:-1]])
         ends = np.r_[starts[1:], n]
-        for s, e in zip(starts, ends):
-            if e - s < 2:
-                continue
+        # 绝大多数桶只有一篇文档。几百万篇时，逐个桶用 Python 循环要跑几千万次，
+        # 所以先用 numpy 挑出至少两篇的桶，只遍历它们
+        multi = np.flatnonzero(ends - starts >= 2)
+        for s, e in zip(starts[multi], ends[multi]):
             members = order[s:e]
             # 小桶两两复核；大桶（常见于大量模板页）只和桶里第一篇比，避免平方级开销
             pairs = ([(members[x], members[y]) for x in range(len(members)) for y in range(x + 1, len(members))]
@@ -141,7 +142,8 @@ def _para_key(p: str) -> int:
     return zlib.crc32(normalize(p).encode("utf-8"))
 
 
-def _keys(doc: str, min_chars: int) -> set[int]:
+def paragraph_keys(doc: str, min_chars: int = 30) -> set[int]:
+    """这篇文档里参与去重的段落（的哈希），同一段在一篇里出现多次只算一次。"""
     return {_para_key(p) for p in _PARA_SPLIT.split(doc)[::2] if len(p.strip()) >= min_chars}
 
 
@@ -153,7 +155,7 @@ def common_paragraphs(docs: Iterable[str], min_docs: int = 3, min_chars: int = 3
     """
     counts: Counter[int] = Counter()
     for d in docs:
-        counts.update(_keys(d, min_chars))
+        counts.update(paragraph_keys(d, min_chars))
     return {k for k, c in counts.items() if c >= min_docs}
 
 
