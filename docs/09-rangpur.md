@@ -94,26 +94,35 @@
 
 ### 把 P5 数据传上去（P2-5 产出）
 
-本机跑完 `scripts/build_dataset.py` 之后，`data/p5/mix/` 里是约 4 GB 的分片 + `meta.json`。
+本机跑完 `scripts/build_dataset.py` 之后：`data/p5/mix/` 是 3.8 GB 的主数据，
+`data/p5_v2/mix/` 是消融 A4 用的中文 35% 数据（1.5 GB）。
 
-**1. 本机打包**（分片本身已经是紧凑的二进制，不用压缩，`tar` 只是为了一次传完、好校验）：
+**1. 本机打包**（分片本身已经是紧凑的二进制，不用压缩，`tar` 只是为了一次传完、好校验）。
+Windows 的 PowerShell **不支持 `&&`**，也没有 `sha256sum`，命令要一条一条敲：
 
-```bash
-cd E:/Documents/transformer/data/p5 && tar cf p5_mix.tar mix && sha256sum p5_mix.tar
+```powershell
+cd E:/Documents/transformer/data
+tar cf p5_data.tar p5/mix p5_v2/mix
+Get-FileHash p5_data.tar -Algorithm SHA256
 ```
+
+`Get-FileHash` 输出的是大写十六进制，Linux 的 `sha256sum` 是小写，比对时忽略大小写。
 
 **2. 传到 Rangpur**（从你的电脑发起，不占 Rangpur 的计算资源）：
 
-```bash
-scp E:/Documents/transformer/data/p5/p5_mix.tar sXXXXXXX@rangpur.compute.eait.uq.edu.au:~/myTransformer/data/
+```powershell
+scp p5_data.tar sXXXXXXX@rangpur.compute.eait.uq.edu.au:~/myTransformer/data/
 ```
+
+**home 配额要留够**：解包时 tar 包和解出来的数据同时存在，5.6 GB 的包峰值约需 11 GB。
+配额紧张就先只传 `p5/mix`（3.8 GB，够跑除 A4 之外的全部实验），A4 的数据之后再传。
 
 **3. 解包和校验要放在 CPU 交互作业里**（几 GB 的读写不属于登录节点允许的"小文件操作"，见 §登录节点上能做什么）：
 
 ```bash
 srun --account=comp3710 --partition=cpu --time=00:30:00 --pty bash
-cd ~/myTransformer/data && sha256sum p5_mix.tar      # 和本机的哈希逐字符比对
-tar xf p5_mix.tar && rm p5_mix.tar                   # 解完就删，home 放不下两份
+cd ~/myTransformer/data && sha256sum p5_data.tar     # 和本机的哈希比对（忽略大小写）
+tar xf p5_data.tar && rm p5_data.tar                 # 解完就删，home 放不下两份
 exit
 ```
 
