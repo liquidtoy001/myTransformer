@@ -302,6 +302,13 @@ class Trainer:
         if final is not None and ck.latest(self.run_dir) is None:
             # 已经训完并压缩过：只有权重，没有优化器和数据流状态。只用于补最终评测，不能继续训练
             state = ck.load(final, map_location=self.device)
+            if state["step"] < self.cfg.max_steps:
+                # 比如训完后把 max_steps 调大了：final.pt 没有优化器状态和数据位置，
+                # 接着训会用全新的优化器、从数据开头重读，而且不报错。必须拦住
+                raise ResumeError(
+                    f"{final} 是 step {state['step']} 训完后压缩的（只有权重），不能续训到 {self.cfg.max_steps} 步。"
+                    "要继续训练，请换一个 run_dir 并用 init_from 从它起步"
+                )
             self.model.load_state_dict(state["model"])
             self.step, self.tokens_seen = state["step"], state["tokens_seen"]
             self.log(f"已训完：{final.name}（step {self.step}）")

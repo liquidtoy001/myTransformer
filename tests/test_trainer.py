@@ -348,3 +348,11 @@ def test_interrupted_run_is_not_compacted(env):
     train(make_cfg(env, max_steps=12, final_weights_only=True), on_step=stop_at(6))
     names = {p.name for p in (env / "run").iterdir()}
     assert "final.pt" not in names and any(n.startswith("ckpt_") for n in names)
+
+
+def test_compacted_run_refuses_to_continue_with_more_steps(env):
+    """压缩后的 final.pt 没有优化器状态和数据位置。把 max_steps 调大再提交，必须报错，
+    而不是悄悄用全新的优化器、从数据开头接着训。"""
+    train(make_cfg(env, max_steps=8, final_weights_only=True))
+    with pytest.raises(ResumeError, match="只有权重"):
+        train(make_cfg(env, max_steps=12, final_weights_only=True))
