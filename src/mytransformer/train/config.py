@@ -56,6 +56,7 @@ class TrainConfig:
     ckpt_every: int = 1000
     ckpt_keep: int = 3
     ckpt_keep_every: int = 0                # 这个整数倍的 step 永久保留（中间 checkpoint 评测用）
+    final_weights_only: bool = False        # 训完后只留权重（final.pt），删掉带优化器状态的完整存档
     peak_tflops: float | None = None        # 不填则按 GPU 型号查表
 
     # 本 run 没有任何 checkpoint 时，从这个 checkpoint 起步（WSD 分叉用）

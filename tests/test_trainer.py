@@ -301,3 +301,50 @@ def test_refuses_shards_from_another_tokenizer(env):
     big.write_text((env / "tiny.yaml").read_text().replace(f"vocab_size: {VOCAB}", "vocab_size: 32768"))
     with pytest.raises(ValueError, match="分片是用分词器 0000000000000000 切的"):
         Trainer(make_cfg(env, model=str(big), tokenizer=str(mt32k)), device="cpu", log=lambda _: None)
+
+
+# ---------------------------------------------------------------- 训完之后：最终评测、压缩存档
+
+
+def test_final_eval_happens_even_when_steps_not_multiple_of_eval_every(env):
+    """max_steps=10、eval_every=4：以前只在 4、8 步评测，第 10 步（训完时）的 loss 没有记录。
+    WSD 的衰减集中在最后，这恰恰是缩放律要用的那个数。"""
+    train(make_cfg(env, max_steps=10, eval_every=4))
+    assert [r["step"] for r in records(env, kind="eval")] == [4, 8, 10]
+
+
+def test_rerun_of_finished_run_adds_missing_final_eval(env):
+    """已经训完、但当时没做最终评测的 run（P5 的 ladder_s1/s2 就是这样）：重新提交一次，补上即可，不重训。"""
+    cfg = make_cfg(env, max_steps=10, eval_every=4)
+    train(cfg)
+    lines = (env / "run" / "metrics.jsonl").read_text("utf-8").splitlines()
+    kept = [l for l in lines if not (json.loads(l)["type"] == "eval" and json.loads(l)["step"] == 10)]
+    (env / "run" / "metrics.jsonl").write_text("\n".join(kept) + "\n", "utf-8")   # 模拟旧版代码的产物
+    n_train = len(records(env))
+
+    assert train(cfg) == "done"
+    assert [r["step"] for r in records(env, kind="eval")] == [4, 8, 10]
+    assert len(records(env)) == n_train  # 没有重新训练
+
+
+def test_final_weights_only_compacts_and_rerun_is_noop(env):
+    cfg = make_cfg(env, max_steps=8, final_weights_only=True)
+    train(cfg)
+    files = sorted(p.name for p in (env / "run").iterdir() if p.suffix == ".pt")
+    assert files == ["final.pt"]
+    state = ck.load(env / "run" / "final.pt")
+    assert set(state) == {"model", "step", "tokens_seen", "meta"} and state["step"] == 8
+
+    # 再提交一次：认出已训完，不从头训练，也不报错
+    n_train = len(records(env))
+    assert train(cfg) == "done"
+    assert len(records(env)) == n_train
+    final = ck.load(env / "run" / "final.pt")["model"]
+    assert all(torch.equal(final[k], state["model"][k]) for k in final)
+
+
+def test_interrupted_run_is_not_compacted(env):
+    """只有训完才压缩。中途停下的 run 必须保留完整 checkpoint，否则没法续跑。"""
+    train(make_cfg(env, max_steps=12, final_weights_only=True), on_step=stop_at(6))
+    names = {p.name for p in (env / "run").iterdir()}
+    assert "final.pt" not in names and any(n.startswith("ckpt_") for n in names)

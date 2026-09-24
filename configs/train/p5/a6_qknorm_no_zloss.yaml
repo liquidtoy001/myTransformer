@@ -26,3 +26,4 @@ eval_every: 100
 eval_batches: 14                    # 7 个子集，每个 2 批
 ckpt_every: 250
 ckpt_keep: 2
+final_weights_only: true           # 训完只留权重：home 只有 16 GB，十几个实验的完整存档放不下

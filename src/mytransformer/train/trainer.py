@@ -128,6 +128,7 @@ class Trainer:
         self._resume()
         if self.step >= cfg.max_steps:
             self.log(f"已训练到 {self.step}/{cfg.max_steps} 步，无需继续")
+            self._finish()  # 以前的版本训完可能没做最终评测、没压缩存档，这里补上
             return "done"
         self.log(self._banner())
 
@@ -172,7 +173,38 @@ class Trainer:
         if last_saved != self.step:
             self._save("done")
         self.log(f"训练完成：{self.step} 步，{self.tokens_seen / 1e9:.3f}B tokens")
+        self._finish()
         return "done"
+
+    def _finish(self) -> None:
+        """训练完成后的两件事。
+
+        1. **最终评测**：评测每 eval_every 步做一次，max_steps 不一定是它的整数倍。WSD 的学习率衰减集中在
+           最后 10%，loss 恰恰在这段降得最多——不补这一次，缩放律要用的"训完时的 loss"根本没记下来
+           （P5 的 ladder_s1 停在 360 步、最后一次评测在 300 步，就是这样漏掉的）
+        2. **压缩存档**（final_weights_only）：只留权重，删掉带优化器状态的完整 checkpoint
+        """
+        if self.val and not self._has_eval_at(self.step):
+            self._log_eval()
+        if self.cfg.final_weights_only and ck.latest(self.run_dir) is not None:
+            path = ck.finalize(self.run_dir, {
+                "model": self.model.state_dict(),
+                "step": self.step,
+                "tokens_seen": self.tokens_seen,
+                "meta": {"git": _git_commit(), "config": self.cfg.to_dict(),
+                         "model_config": asdict(self.model_cfg), "time": time.time()},
+            })
+            self.log(f"已压缩为 {path.name}（只含权重），完整 checkpoint 已删除")
+
+    def _has_eval_at(self, step: int) -> bool:
+        f = self.run_dir / "metrics.jsonl"
+        if not f.exists():
+            return False
+        for line in f.read_text("utf-8").splitlines():
+            r = json.loads(line)
+            if r.get("type") == "eval" and r.get("step") == step:
+                return True
+        return False
 
     def _build_optimizers(self) -> list[torch.optim.Optimizer]:
         """adamw：全部参数一个 AdamW。muon：二维权重给 Muon，嵌入和一维参数仍给 AdamW（见 muon.py）。"""
@@ -266,6 +298,15 @@ class Trainer:
         self.log(f"已存档 {path.name}（{reason}）")
 
     def _resume(self) -> None:
+        final = ck.final_path(self.run_dir)
+        if final is not None and ck.latest(self.run_dir) is None:
+            # 已经训完并压缩过：只有权重，没有优化器和数据流状态。只用于补最终评测，不能继续训练
+            state = ck.load(final, map_location=self.device)
+            self.model.load_state_dict(state["model"])
+            self.step, self.tokens_seen = state["step"], state["tokens_seen"]
+            self.log(f"已训完：{final.name}（step {self.step}）")
+            return
+
         path, source = ck.latest(self.run_dir), "续跑"
         if path is None and self.cfg.init_from:
             path, source = Path(self.cfg.init_from), "从分叉起点开始"

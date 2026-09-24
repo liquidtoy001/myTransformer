@@ -47,6 +47,32 @@ def load(path: Path, map_location: str | torch.device = "cpu") -> dict:
     return torch.load(path, map_location=map_location, weights_only=True)
 
 
+FINAL_NAME = "final.pt"
+
+
+def finalize(run_dir: Path, payload: dict) -> Path:
+    """训练完成后：写一个只含权重的 final.pt，再删掉所有完整 checkpoint。
+
+    完整 checkpoint 里优化器状态（AdamW 的两个动量）是权重的 2 倍大，只有续跑时才需要。
+    训完之后留着它只是占空间：39M 参数的模型，完整 checkpoint 470 MB，只存权重 157 MB。
+    Rangpur 的 home 只有 16 GB，P5 的十几个实验必须这样才放得下。
+
+    先写 final.pt 再删旧文件：写到一半被杀，旧的完整 checkpoint 还在，下次还能续上。
+    """
+    final = run_dir / FINAL_NAME
+    tmp = final.with_name(final.name + ".tmp")
+    torch.save(payload, tmp)
+    os.replace(tmp, final)
+    for _, p in list_checkpoints(run_dir):
+        p.unlink()
+    return final
+
+
+def final_path(run_dir: Path) -> Path | None:
+    p = run_dir / FINAL_NAME
+    return p if p.exists() else None
+
+
 def prune(run_dir: Path, keep: int, keep_every: int = 0) -> list[Path]:
     """只保留最新的 keep 份；step 是 keep_every 整数倍的永久保留（供中间 checkpoint 评测）。
 
