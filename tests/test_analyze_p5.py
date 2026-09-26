@@ -25,11 +25,12 @@ def mod():
     return m
 
 
-def write_run(root: Path, name: str, val_loss: float, steps: int = 1507, grad_norm: float = 1.0) -> None:
+def write_run(root: Path, name: str, val_loss: float, steps: int = 1507, grad_norm: float = 1.0,
+              per: dict | None = None) -> None:
     d = root / name
     d.mkdir(parents=True, exist_ok=True)
-    per = {k: val_loss + off for k, off in
-           [("en_web", -0.3), ("zh_web", 0.4), ("code", 0.1), ("math", -0.1)]}
+    per = per or {k: val_loss + off for k, off in
+                  [("en_web", -0.3), ("zh_web", 0.4), ("code", 0.1), ("math", -0.1)]}
     recs = [{"type": "train", "step": s, "tokens": s * 524288, "loss": val_loss + 1.0,
              "lr": 2e-3, "grad_norm": grad_norm, "step_s": 2.0, "tok_s": 1e5}
             for s in range(20, steps + 1, 20)]
@@ -81,3 +82,32 @@ def test_seed_variance_needs_at_least_two_runs(mod, tmp_path):
     write_run(tmp_path, "base_seed0", 3.4)
     runs = {d.name: mod.read_run(d) for d in tmp_path.iterdir()}
     assert "种子方差还没跑完" in "\n".join(mod.ablation_report(runs))
+
+
+def test_power_law_fit_detects_non_power_law(mod):
+    """两参数幂律在对数坐标下是直线：真是幂律时残差 ≈ 0，弯得厉害时残差很大。"""
+    ns = np.array([1e7, 2e7, 8e7])
+    exact = mod.fit_power(ns, 5.0 * ns ** -0.1)
+    assert exact["alpha"] == pytest.approx(0.1, abs=1e-6) and exact["max_resid"] < 1e-9
+    curved = mod.fit_power(ns, np.array([5.0, 3.7, 3.1]))
+    assert curved["max_resid"] > 0.05
+
+
+def test_per_subset_table_uses_each_subsets_own_noise(mod, tmp_path):
+    """同样 +0.01 的变化：在噪声 0.001 的子集上显著，在噪声 0.02 的子集上不显著。"""
+    for i, (a, b) in enumerate([(3.00, 2.00), (3.001, 2.02), (2.999, 1.98)]):
+        write_run(tmp_path, f"base_seed{i}", 3.0, per={"quiet": a, "noisy": b})
+    write_run(tmp_path, "a1_muon", 3.0, per={"quiet": 3.01, "noisy": 2.01})
+    runs = {d.name: mod.read_run(d) for d in tmp_path.iterdir()}
+    row = next(l for l in mod.ablation_report(runs) if l.startswith("| A1 优化器 |"))
+    assert "**+0.010**" in row          # quiet：σ≈0.001，+0.01 远超 2σ
+    assert "| +0.010 |" in row           # noisy：σ≈0.02，+0.01 在噪声内，不加粗
+
+
+def test_hand_written_section_survives_regeneration(mod, tmp_path):
+    out = tmp_path / "r.md"
+    mod._keep_hand_written(out, ["# 自动生成 v1"])
+    out.write_text(out.read_text("utf-8") + "\n我的结论：保留这一段", "utf-8")
+    mod._keep_hand_written(out, ["# 自动生成 v2"])
+    text = out.read_text("utf-8")
+    assert "v2" in text and "v1" not in text and "我的结论：保留这一段" in text

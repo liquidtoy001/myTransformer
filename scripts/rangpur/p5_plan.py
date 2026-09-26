@@ -18,7 +18,8 @@ from mytransformer.model import ModelConfig
 from mytransformer.train.config import TrainConfig
 
 P5 = Path("configs/train/p5")
-MEASURED = {"ladder_s1": 2.84, "ladder_s2": 3.37}  # 秒/步，global batch 524288 tokens
+MEASURED = {"ladder_s1": 2.84, "ladder_s2": 3.37}  # 秒/步
+MEASURED_BATCH = 524288                             # 上面两个数是在这个 global batch 下测的
 JOB_LIMIT_MIN = 240       # 单个作业最多申请 4 小时（接力比一次申请 12 小时更容易排上）
 STARTUP_MIN = 10          # 启动、编译、最终评测、存档
 MARGIN = 1.15             # 每步耗时的余量：别人的作业、NFS 抖动都会让它变慢
@@ -35,7 +36,8 @@ def seconds_per_step(cfg: TrainConfig) -> float:
         base = MEASURED["ladder_s2"] * model.flops_per_token(cfg.seq_len) / ref.flops_per_token(cfg.seq_len)
     if cfg.optimizer == "muon":
         base *= 1.05  # Newton-Schulz 迭代的额外开销
-    return base
+    # 实测值都是在每步 524288 tokens 下测的；batch 变小，每步的累积次数按比例减少
+    return base * cfg.global_batch_tokens / MEASURED_BATCH
 
 
 def plan() -> list[tuple[str, int, int, int, float, str]]:

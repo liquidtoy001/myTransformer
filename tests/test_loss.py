@@ -99,3 +99,23 @@ def test_chunked_ce_reduces_peak_memory():
         f"分块 {chunked:.2f} GiB 没压到一整份 fp32 logits（{full_fp32_logits:.2f} GiB）以下，"
         f"很可能没做激活重算；不分块为 {plain:.2f} GiB"
     )
+
+
+def test_z_loss_matches_the_textbook_formula():
+    """z-loss 的实现复用了交叉熵的结果（logsumexp = 交叉熵 + 正确答案的 logit），只算一次 softmax。
+    它必须和教科书写法——交叉熵 + z·logsumexp² 分开算——在 loss 和梯度上都一致，包括 ignore_index 的位置。"""
+    torch.manual_seed(1)
+    logits = torch.randn(64, 500, dtype=torch.float64, requires_grad=True)
+    y = torch.randint(0, 500, (64,))
+    y[::7] = -100
+    z = 1e-3
+
+    mask = y != -100
+    reference = (torch.nn.functional.cross_entropy(logits, y, ignore_index=-100, reduction="sum")
+                 + z * torch.logsumexp(logits, -1)[mask].pow(2).sum())
+    (g_ref,) = torch.autograd.grad(reference, logits)
+    ours = Transformer._loss_from_logits(logits, y, z)
+    (g_ours,) = torch.autograd.grad(ours, logits)
+
+    assert torch.allclose(ours, reference, rtol=1e-12, atol=1e-12)
+    assert torch.allclose(g_ours, g_ref, rtol=1e-10, atol=1e-12)
