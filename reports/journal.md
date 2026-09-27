@@ -69,3 +69,9 @@
 - 缩放律：六种合理拟合外推 250M 从 2.27 到 2.94，预测不了。怀疑 ladder_s1 被固定 batch 和 100 步 warmup（占 28%）拖累，准备了小 batch 诊断实验
 - A6 每步快一倍，追查发现 z-loss 实现把 softmax 算了两遍（+43% 时间、+1 GB 显存），修到 +11%，数值完全一致
 - 决定：P6 数据配比采用 v2（中文 35%），用户偏向中文
+
+## 2026-09-28 · 缩放律诊断
+- ladder_s1_smallbatch（batch 1/4、1440 步、warmup 5%，tokens 不变）：val loss 4.99 → 4.08。原 s1 被步数不足和 28% 的 warmup 严重拖累
+- 换上后三点几乎共线，外推 250M 的范围从 2.27–2.94 收窄到 2.58–2.68
+- A6 快一倍的原因：A5 和 A6 同在 a100-0 节点，A5 正常，所以不是节点快，是关掉 z-loss 后 torch.compile 融合得更好（本机不开 compile 只差 1.25 倍）
+- 下一步：ladder_s2_smallbatch（batch 1/2、1720 步、warmup 5%）

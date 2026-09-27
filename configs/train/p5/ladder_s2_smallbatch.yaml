@@ -1,0 +1,30 @@
+# 诊断实验之二：ladder_s1 换成小 batch 后 loss 从 4.99 降到 4.08（见 reports/scaling.md §三）。
+# s2 也只有 860 步、warmup 占 12%，是不是也被低估了？只改 batch（减半）和 warmup（改为 5%）。
+# 训练的 token 数不变（451M），学习率不变。
+model: configs/model/ladder_s2.yaml
+train_data: data/p5/mix/train_*.bin
+val_data: data/p5/mix/val_*.bin
+tokenizer: tokenizer/mt32k.json
+run_dir: runs/p5/ladder_s2_smallbatch
+
+seq_len: 2048
+global_batch_tokens: 262144      # 原来的一半
+micro_batch_size: 16
+max_steps: 1720                     # × 262144 ≈ 451M tokens，和 ladder_s2 相同
+
+lr: 2.0e-3
+warmup_steps: 86                    # 5%（原来 100 步占 12%）
+schedule: wsd
+
+dtype: bfloat16
+compile: true
+ce_chunk: 4096
+z_loss: 1.0e-4
+
+seed: 0
+log_every: 20
+eval_every: 100
+eval_batches: 14
+ckpt_every: 250
+ckpt_keep: 2
+final_weights_only: true           # 训完只留权重：home 只有 16 GB，十几个实验的完整存档放不下
