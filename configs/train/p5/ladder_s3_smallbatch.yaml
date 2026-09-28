@@ -1,0 +1,30 @@
+# 诊断实验之三：s1、s2 换成小 batch 后分别降了 0.91、0.13（见 reports/scaling.md §四、§五）。
+# s3 是否也被低估？和 ladder_s2_smallbatch 同样的规则：batch 26 万 tokens、warmup 5%。
+# 训练的 token 数不变（1487M），学习率不变。可以只跑到第 1600 步先和原 s3 比较，再决定是否续跑到底。
+model: configs/model/ladder_s3.yaml
+train_data: data/p5/mix/train_*.bin
+val_data: data/p5/mix/val_*.bin
+tokenizer: tokenizer/mt32k.json
+run_dir: runs/p5/ladder_s3_smallbatch
+
+seq_len: 2048
+global_batch_tokens: 262144      # 原来的一半
+micro_batch_size: 8
+max_steps: 5672                     # × 262144 ≈ 1487M tokens，和 ladder_s3 相同
+
+lr: 1.33e-3
+warmup_steps: 284                   # 5%（原来 100 步占 3.5%）
+schedule: wsd
+
+dtype: bfloat16
+compile: true
+ce_chunk: 4096
+z_loss: 1.0e-4
+
+seed: 0
+log_every: 20
+eval_every: 100
+eval_batches: 14
+ckpt_every: 250
+ckpt_keep: 2
+final_weights_only: true           # 训完只留权重：home 只有 16 GB，十几个实验的完整存档放不下

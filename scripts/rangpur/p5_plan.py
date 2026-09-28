@@ -18,7 +18,9 @@ from mytransformer.model import ModelConfig
 from mytransformer.train.config import TrainConfig
 
 P5 = Path("configs/train/p5")
-MEASURED = {"ladder_s1": 2.84, "ladder_s2": 3.37}  # 秒/步
+# 秒/步。ladder_s2 是 2026-09-28 修复 z-loss 重复计算后的实测（每 26 万 tokens 1.267 s，折合 2.53 s；
+# 修复前是 3.37 s）。ladder_s1 还是修复前的数，偏保守
+MEASURED = {"ladder_s1": 2.84, "ladder_s2": 2.53}
 MEASURED_BATCH = 524288                             # 上面两个数是在这个 global batch 下测的
 JOB_LIMIT_MIN = 240       # 单个作业最多申请 4 小时（接力比一次申请 12 小时更容易排上）
 STARTUP_MIN = 10          # 启动、编译、最终评测、存档

@@ -75,3 +75,6 @@
 - 换上后三点几乎共线，外推 250M 的范围从 2.27–2.94 收窄到 2.58–2.68
 - A6 快一倍的原因：A5 和 A6 同在 a100-0 节点，A5 正常，所以不是节点快，是关掉 z-loss 后 torch.compile 融合得更好（本机不开 compile 只差 1.25 倍）
 - 下一步：ladder_s2_smallbatch（batch 1/2、1720 步、warmup 5%）
+- ladder_s2_smallbatch（batch 1/2、1720 步）：3.6645 → 3.5302。同 tokens 中途对比就已低 0.26。修 s1、s2 后外推范围 2.59–2.87，s3 仍是旧规则，拟合不可信
+- z-loss 修复在 Rangpur 上的效果：s2 每 52 万 tokens 从 3.37 s 降到 2.53 s（快 33%，MFU 16.8% → 22.3%）
+- 下一步：ladder_s3_smallbatch 只跑到第 1600 步，和原 s3 同 tokens 比较，再决定是否续跑
