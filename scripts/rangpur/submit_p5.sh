@@ -5,6 +5,7 @@
 #   bash scripts/rangpur/submit_p5.sh ladder     # 只跑缩放三点
 #   bash scripts/rangpur/submit_p5.sh ablation   # 只跑种子方差 + 6 组消融
 #   bash scripts/rangpur/submit_p5.sh --dry-run  # 只打印计划，不提交
+#   bash scripts/rangpur/submit_p5.sh --dir=configs/train/p5b   # 第二轮消融（新规则）
 #
 # 每个实验申请多长时间、分几个作业接力，由 scripts/rangpur/p5_plan.py 按**实测**的每步耗时算出
 # （一开始按假设的 MFU 估时，作业在 303/360 步被截断，所以不再手写时长）。
@@ -18,11 +19,13 @@ set -euo pipefail
 
 GROUP="all"
 DRY=0
+DIR="configs/train/p5"
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY=1 ;;
+    --dir=*) DIR="${arg#--dir=}" ;;
     all|ladder|ablation) GROUP="$arg" ;;
-    *) echo "用法: submit_p5.sh [all|ladder|ablation] [--dry-run]"; exit 1 ;;
+    *) echo "用法: submit_p5.sh [all|ladder|ablation] [--dry-run] [--dir=配置目录]"; exit 1 ;;
   esac
 done
 
@@ -54,8 +57,8 @@ while read -r config job_min train_min jobs run_dir; do
       echo "已提交 $prev  $name（申请 ${job_min} 分钟，训练预算 ${train_min} 分钟）"
     fi
   done
-done < <(python scripts/rangpur/p5_plan.py --lines)
+done < <(python scripts/rangpur/p5_plan.py --lines --dir "$DIR")
 
 echo
-python scripts/rangpur/p5_plan.py | tail -1
+python scripts/rangpur/p5_plan.py --dir "$DIR" | tail -1
 [ "$DRY" = 1 ] || squeue --me --format="%.10i %.30j %.10T %.10M %.10l %R"

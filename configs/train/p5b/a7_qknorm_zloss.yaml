@@ -1,0 +1,31 @@
+# P5 第二轮消融（新规则）的公共底座。和第一轮（configs/train/p5/_base_s2.yaml）只差 batch 和 warmup：
+# 第一轮每步 52 万 tokens、固定 100 步 warmup，缩放实验证明这种设置"步数偏少"，会夸大差距
+# （见 reports/scaling.md）。这里按新规则：每步 26 万 tokens（步数翻倍）、warmup 占 5%。
+# 训练的 token 数不变（0.79B），学习率不变。
+model: configs/model/s2_qknorm.yaml     # QK-Norm；z-loss 保持开启——这正是 P6 打算用的组合，第一轮没测过
+train_data: data/p5/mix/train_*.bin
+val_data: data/p5/mix/val_*.bin
+tokenizer: tokenizer/mt32k.json
+run_dir: runs/p5b/a7_qknorm_zloss
+
+seq_len: 2048
+global_batch_tokens: 262144
+micro_batch_size: 16
+max_steps: 3014                     # 3014 × 262144 ≈ 0.79B tokens，和第一轮相同
+
+lr: 2.0e-3
+warmup_steps: 151                   # 5%
+schedule: wsd
+
+dtype: bfloat16
+compile: true
+ce_chunk: 4096
+z_loss: 1.0e-4
+
+seed: 0
+log_every: 20
+eval_every: 100
+eval_batches: 14
+ckpt_every: 500
+ckpt_keep: 2
+final_weights_only: true

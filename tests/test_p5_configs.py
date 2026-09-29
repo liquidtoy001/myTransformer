@@ -77,3 +77,33 @@ def test_ablations_and_seeds_train_on_the_same_token_budget():
     budgets = {f.name: TrainConfig.from_yaml(f).max_steps * TrainConfig.from_yaml(f).global_batch_tokens
                for f in P5.glob("*.yaml") if not f.name.startswith("ladder")}
     assert len(set(budgets.values())) == 1, budgets
+
+
+# ---------------------------------------------------------------- 第二轮（新规则）
+
+
+P5B = P5.parent / "p5b"
+ALLOWED_B = {
+    "a1_muon.yaml": {"optimizer", "muon_lr"},
+    "a7_qknorm_zloss.yaml": {"model"},
+    "base_seed0.yaml": set(),
+    "base_seed1.yaml": {"seed"},
+    "base_seed2.yaml": {"seed"},
+}
+
+
+@pytest.mark.parametrize("name", sorted(ALLOWED_B))
+def test_round_two_ablation_changes_exactly_one_thing(name):
+    base, other = raw(P5B / "_base_s2.yaml"), raw(P5B / name)
+    diff = {k for k in base | other if base.get(k) != other.get(k)} - {"run_dir"}
+    assert diff == ALLOWED_B[name], f"{name} 和底座的差异是 {diff}，期望 {ALLOWED_B[name]}"
+
+
+def test_round_two_differs_from_round_one_only_in_batch_and_warmup():
+    """第二轮要回答"换成步数充足的设置，结论还在不在"，所以和第一轮只能差 batch 相关的几项。"""
+    old, new = raw(BASE), raw(P5B / "_base_s2.yaml")
+    diff = {k for k in old | new if old.get(k) != new.get(k)} - {"run_dir"}
+    assert diff == {"global_batch_tokens", "max_steps", "warmup_steps", "ckpt_every"}
+    assert old["global_batch_tokens"] * old["max_steps"] == pytest.approx(
+        new["global_batch_tokens"] * new["max_steps"], rel=0.001)   # 训练的 token 数相同
+    assert new["warmup_steps"] / new["max_steps"] == pytest.approx(0.05, abs=0.001)

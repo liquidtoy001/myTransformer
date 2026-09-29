@@ -26,7 +26,7 @@ def mod():
 
 
 def write_run(root: Path, name: str, val_loss: float, steps: int = 1507, grad_norm: float = 1.0,
-              per: dict | None = None) -> None:
+              per: dict | None = None, tokens: int | None = None) -> None:
     d = root / name
     d.mkdir(parents=True, exist_ok=True)
     per = per or {k: val_loss + off for k, off in
@@ -34,7 +34,7 @@ def write_run(root: Path, name: str, val_loss: float, steps: int = 1507, grad_no
     recs = [{"type": "train", "step": s, "tokens": s * 524288, "loss": val_loss + 1.0,
              "lr": 2e-3, "grad_norm": grad_norm, "step_s": 2.0, "tok_s": 1e5}
             for s in range(20, steps + 1, 20)]
-    recs.append({"type": "eval", "step": steps, "tokens": steps * 524288,
+    recs.append({"type": "eval", "step": steps, "tokens": tokens or steps * 524288,
                  "val_loss": val_loss, "val": per})
     (d / "metrics.jsonl").write_text("\n".join(json.dumps(r) for r in recs), "utf-8")
 
@@ -73,7 +73,7 @@ def test_ablation_table_flags_only_effects_above_two_sigma(mod, tmp_path):
 
 
 def test_report_refuses_to_fit_with_too_few_points(mod, tmp_path):
-    write_run(tmp_path, "ladder_s1", 3.0)
+    write_run(tmp_path, "ladder_s1_smallbatch", 3.0)
     runs = {d.name: mod.read_run(d) for d in tmp_path.iterdir()}
     assert "无法拟合" in "\n".join(mod.scaling_report(runs))
 
@@ -111,3 +111,15 @@ def test_hand_written_section_survives_regeneration(mod, tmp_path):
     mod._keep_hand_written(out, ["# 自动生成 v2"])
     text = out.read_text("utf-8")
     assert "v2" in text and "v1" not in text and "我的结论：保留这一段" in text
+
+
+@pytest.mark.parametrize("losses, expect", [
+    ((4.0797, 3.5302, 3.0174), "最佳估计"),       # P5 新规则的三个点：α 合理，三参数拟合彼此接近
+    ((4.9946, 3.6645, 3.0694), "预测不了"),       # 旧规则（固定大 batch）：α 远超文献范围
+])
+def test_scaling_report_only_trusts_plausible_fits(mod, tmp_path, losses, expect):
+    tokens = (1440 * 131072, 1720 * 262144, 5672 * 262144)   # 三个点真实的训练 token 数（计算量那一栏要用）
+    for name, loss, tok in zip(mod.LADDER, losses, tokens):
+        write_run(tmp_path, name, loss, tokens=tok)
+    runs = {d.name: mod.read_run(d) for d in tmp_path.iterdir()}
+    assert expect in "\n".join(mod.scaling_report(runs))

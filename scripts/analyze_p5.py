@@ -35,6 +35,7 @@ ABLATIONS = {
     "a4_mix_v2": "A4 数据：中文 35% vs 24%",
     "a5_cosine": "A5 调度：cosine vs WSD",
     "a6_qknorm_no_zloss": "A6 稳定性：QK-Norm 且无 z-loss vs 无 QK-Norm 且有 z-loss",
+    "a7_qknorm_zloss": "A7 稳定性：QK-Norm 且保留 z-loss（P6 打算用的组合）",
 }
 ALPHA_GRID = (0.01, 1.5)
 PLAUSIBLE_ALPHA = (0.05, 0.6)   # 文献里 L(N)、L(C) 的指数大致在这个范围（Kaplan 0.076，Chinchilla 约 0.34）
@@ -177,22 +178,45 @@ def ablation_report(runs: dict[str, dict]) -> list[str]:
 # ---------------------------------------------------------------- 缩放律
 
 
-def scaling_report(runs: dict[str, dict]) -> list[str]:
+def _ladder_points(runs: dict[str, dict], names: list[str]) -> list[dict]:
     points = []
-    for i in (1, 2, 3):
-        r = runs.get(f"ladder_s{i}")
+    for name in names:
+        r = runs.get(name)
         if not r:
             continue
-        cfg = TrainConfig.from_yaml(CONFIGS / f"ladder_s{i}.yaml")
+        cfg = TrainConfig.from_yaml(CONFIGS / f"{name}.yaml")
         m = ModelConfig.from_yaml(cfg.model)
         n = m.count_params()
-        points.append({"name": f"ladder_s{i}", "loss": r["val_loss"], "tokens": r["tokens"],
+        points.append({"name": name, "loss": r["val_loss"], "tokens": r["tokens"],
                        "non_embedding": n["non_embedding"], "total": n["total"],
                        "flops": m.flops_per_token(cfg.seq_len) * r["tokens"], "steps": cfg.max_steps,
-                       "warmup": cfg.warmup_steps, "hours": r["hours"]})
+                       "batch": cfg.global_batch_tokens, "warmup": cfg.warmup_steps, "hours": r["hours"]})
+    return points
+
+
+# 新规则：每个模型的步数都够多、warmup 统一为 5%（见 reports/scaling.md §三–§六）。
+# 旧规则（固定每步 52 万 tokens、固定 100 步 warmup）严重低估了小模型，只留作对照
+LADDER = ["ladder_s1_smallbatch", "ladder_s2_smallbatch", "ladder_s3_smallbatch"]
+LADDER_OLD = ["ladder_s1", "ladder_s2", "ladder_s3"]
+
+
+def scaling_report(runs: dict[str, dict]) -> list[str]:
+    points = _ladder_points(runs, LADDER)
+    old = _ladder_points(runs, LADDER_OLD)
     lines = ["# P5 缩放律", ""]
     if len(points) < 3:
-        return lines + [f"三个点还没跑完（当前 {len(points)} 个），无法拟合。", ""]
+        return lines + [f"新规则的三个点还没跑完（当前 {len(points)} 个），无法拟合。", ""]
+    if len(old) == 3:
+        lines += [
+            "## 〇、旧规则 vs 新规则", "",
+            "同样的模型、同样的训练 tokens，只改 batch 和 warmup：", "",
+            "| 模型 | 旧：batch / 步数 / warmup 占比 | 旧 val loss | 新：batch / 步数 / warmup 占比 | 新 val loss | 差 |",
+            "|---|---|---:|---|---:|---:|",
+            *[f"| {o['name']} | {o['batch'] // 1024}k / {o['steps']} / {o['warmup'] / o['steps']:.0%} | {o['loss']:.4f} | "
+              f"{p['batch'] // 1024}k / {p['steps']} / {p['warmup'] / p['steps']:.0%} | {p['loss']:.4f} | "
+              f"{p['loss'] - o['loss']:+.3f} |" for o, p in zip(old, points)],
+            "",
+        ]
 
     big = ModelConfig.from_yaml("configs/model/250m.yaml")
     bn = big.count_params()
@@ -202,11 +226,12 @@ def scaling_report(runs: dict[str, dict]) -> list[str]:
     ls = np.array([p["loss"] for p in points])
 
     lines += [
-        "## 一、三个点", "",
-        "| 模型 | 非嵌入参数 | 总参数 | 训练 tokens | 步数（其中 warmup） | val loss |",
-        "|---|---:|---:|---:|---:|---:|",
+        "## 一、新规则的三个点", "",
+        "| 模型 | 非嵌入参数 | 总参数 | 训练 tokens | batch | 步数（其中 warmup） | val loss |",
+        "|---|---:|---:|---:|---:|---:|---:|",
         *[f"| {p['name']} | {p['non_embedding'] / 1e6:.2f}M | {p['total'] / 1e6:.2f}M | {p['tokens'] / 1e6:.0f}M | "
-          f"{p['steps']}（{p['warmup']}，{p['warmup'] / p['steps']:.0%}） | {p['loss']:.4f} |" for p in points],
+          f"{p['batch'] // 1024}k | {p['steps']}（{p['warmup']}，{p['warmup'] / p['steps']:.0%}） | {p['loss']:.4f} |"
+          for p in points],
         "",
         f"三个点合计约 {sum(p['hours'] for p in points):.1f} A100 小时。",
         "",
@@ -217,7 +242,7 @@ def scaling_report(runs: dict[str, dict]) -> list[str]:
         "| 横轴 | 形式 | α | L∞ | 拟合残差 | 外推 250M | 可信吗 |",
         "|---|---|---:|---:|---:|---:|---|",
     ]
-    preds = []
+    preds, credible = [], []
     for key, label in [("non_embedding", "非嵌入参数"), ("total", "总参数"), ("flops", "计算量 C")]:
         xs = np.array([p[key] for p in points], dtype=float)
         f3 = fit_scaling(xs, ls)
@@ -231,22 +256,28 @@ def scaling_report(runs: dict[str, dict]) -> list[str]:
         note2 = "残差太大，不是幂律" if f2["max_resid"] > 0.05 else "拟合尚可"
         lines.append(f"| {label} | A·x^−α | {f2['alpha']:.3f} | — | ±{f2['max_resid']:.3f} | {p2:.3f} | {note2} |")
         preds += [p3, p2]
+        if ok3:
+            credible.append(p3)
     spread = max(preds) - min(preds)
-    lines += [
-        "",
-        f"**外推结果的范围：{min(preds):.2f} – {max(preds):.2f}（相差 {spread:.2f}）。**",
-        "",
-        ("这个范围太宽，**用这三个点预测不了 250M 的 loss**。原因分析见下面的手写部分。"
-         if spread > 0.1 else "几种拟合给出的外推相近，预测可信度尚可。"),
-        "",
-        "> 三个点拟三个参数，残差必然为 0，这本身什么也证明不了。P6 训完 250M 后回来对照。",
-    ]
+    lines += ["", f"全部 6 种拟合的外推范围：{min(preds):.2f} – {max(preds):.2f}（相差 {spread:.2f}）。", ""]
+    # 两参数幂律没有不可约损失项：模型越大它预测的进步越多，外推系统性偏低，只作参考。
+    # 最佳估计只用 α 落在文献范围内的三参数拟合；它们彼此接近（相差 ≤ 0.1）才给出数字
+    if len(credible) >= 2 and max(credible) - min(credible) <= 0.1:
+        lines += [f"**最佳估计：250M 约 {np.mean(credible):.2f}**（{len(credible)} 种 α 合理的三参数拟合给出 "
+                  f"{min(credible):.3f} – {max(credible):.3f}）。两参数幂律没有不可约损失项，外推会偏低，只作参考。"]
+    else:
+        lines += ["**用这三个点预测不了 250M 的 loss**：α 合理的三参数拟合不到两种，或者它们彼此差得太远。"
+                  "原因分析见下面的手写部分。"]
+    lines += ["", "> 三个点拟三个参数，残差必然为 0，这本身什么也证明不了。P6 训完 250M 后回来对照。"]
     return lines
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", default="runs/p5")
+    ap.add_argument("--ablation-out", default="reports/ablation.md",
+                    help="第二轮消融写到另一个文件，例如 reports/ablation_round2.md")
+    ap.add_argument("--skip-scaling", action="store_true", help="只出消融报告（第二轮没有缩放实验）")
     args = ap.parse_args()
     runs = {}
     for d in sorted(Path(args.runs).glob("*")):
@@ -258,9 +289,11 @@ def main() -> None:
     print(f"读到 {len(runs)} 个 run：{', '.join(sorted(runs))}")
 
     Path("reports").mkdir(exist_ok=True)
-    _keep_hand_written(Path("reports/ablation.md"), ablation_report(runs))
-    _keep_hand_written(Path("reports/scaling.md"), scaling_report(runs))
-    print("已写 reports/ablation.md、reports/scaling.md")
+    _keep_hand_written(Path(args.ablation_out), ablation_report(runs))
+    print(f"已写 {args.ablation_out}")
+    if not args.skip_scaling:
+        _keep_hand_written(Path("reports/scaling.md"), scaling_report(runs))
+        print("已写 reports/scaling.md")
 
 
 if __name__ == "__main__":

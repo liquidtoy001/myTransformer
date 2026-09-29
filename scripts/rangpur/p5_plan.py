@@ -42,9 +42,9 @@ def seconds_per_step(cfg: TrainConfig) -> float:
     return base * cfg.global_batch_tokens / MEASURED_BATCH
 
 
-def plan() -> list[tuple[str, int, int, int, float, str]]:
+def plan(config_dir: Path = P5) -> list[tuple[str, int, int, int, float, str]]:
     rows = []
-    for f in sorted(P5.glob("*.yaml")):
+    for f in sorted(config_dir.glob("*.yaml")):
         if f.name.startswith("_"):
             continue
         cfg = TrainConfig.from_yaml(f)
@@ -64,8 +64,9 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--lines", action="store_true",
                     help="每行：配置 作业分钟数 训练分钟数 作业数 run_dir")
+    ap.add_argument("--dir", default=str(P5), help="配置目录；第二轮消融是 configs/train/p5b")
     args = ap.parse_args()
-    rows = plan()
+    rows = plan(Path(args.dir))
     if args.lines:
         for cfg, job_min, train_min, jobs, _, run_dir in rows:
             print(cfg, job_min, train_min, jobs, run_dir)
