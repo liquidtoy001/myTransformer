@@ -1,5 +1,7 @@
 # Rangpur 集群使用说明
 
+供其他项目复用的历史实测与通用操作参考见 [Rangpur 实测参考](rangpur-reference.md)。本文包含 Transformer 项目的规划与早期估算；当前配额、空闲盘容量和训练状态须重新查询。
+
 本项目 P4 冒烟、P5 全部实验、P7、P8 都在学院的 Rangpur 集群（A100 40G）上跑；P6 正式训练租云上 8×H100（见 [04-compute.md](04-compute.md) §五）。这份文档记录 Rangpur 的硬约束、存储方案和作业模板。
 
 以下事实来自实际使用（GAN 训练）、终端实测（2026-09-19）和课程指南 *COMP3710 Getting Started on Rangpur*。文中学号一律写作 `sXXXXXXX`。

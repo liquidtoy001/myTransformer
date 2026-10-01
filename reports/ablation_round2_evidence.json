@@ -1,0 +1,121 @@
+{
+  "source_commit_reported_by_user": "322a7a9",
+  "commit_independently_verified": false,
+  "runs": {
+    "a1_muon": {
+      "sha256": "2c4b225e38c9c7e534a8b9dab0eca97d9f5c883e77759305cc6a5661bef3c0af",
+      "train_records": 151,
+      "eval_records": 31,
+      "final": {
+        "type": "eval",
+        "step": 3014,
+        "tokens": 790102016,
+        "val_loss": 3.304845247949873,
+        "val": {
+          "code": 1.9479384422302246,
+          "en_web": 3.2562607526779175,
+          "en_web_dclm": 3.9402741193771362,
+          "en_wiki": 2.998382806777954,
+          "math": 2.76340389251709,
+          "zh_web": 4.185815095901489,
+          "zh_wiki": 4.041841626167297
+        }
+      },
+      "steady_step_s_median": 1.3191767549607902,
+      "max_logged_grad_norm": 8.353754997253418,
+      "peak_mem_gib": 7.14907693862915
+    },
+    "a7_qknorm_zloss": {
+      "sha256": "a585dfc6c2f542c057435c8a7787fd6788f550af78264cd76a108c2d69db2b27",
+      "train_records": 151,
+      "eval_records": 31,
+      "final": {
+        "type": "eval",
+        "step": 3014,
+        "tokens": 790102016,
+        "val_loss": 3.308666603905814,
+        "val": {
+          "code": 1.976949691772461,
+          "en_web": 3.2551668882369995,
+          "en_web_dclm": 3.942546248435974,
+          "en_wiki": 2.9930777549743652,
+          "math": 2.756668448448181,
+          "zh_web": 4.193893671035767,
+          "zh_wiki": 4.042363524436951
+        }
+      },
+      "steady_step_s_median": 1.296550715342164,
+      "max_logged_grad_norm": 2.273759126663208,
+      "peak_mem_gib": 7.552712440490723
+    },
+    "base_seed0": {
+      "sha256": "7ba7a74df6ddc5875ff69452be03793ce58546148aaafe87876ed06dd48cc776",
+      "train_records": 151,
+      "eval_records": 31,
+      "final": {
+        "type": "eval",
+        "step": 3014,
+        "tokens": 790102016,
+        "val_loss": 3.34737457547869,
+        "val": {
+          "code": 2.0216386318206787,
+          "en_web": 3.2892414331436157,
+          "en_web_dclm": 3.976188063621521,
+          "en_wiki": 3.030029058456421,
+          "math": 2.7992218732833862,
+          "zh_web": 4.237094402313232,
+          "zh_wiki": 4.078208565711975
+        }
+      },
+      "steady_step_s_median": 1.2682848368305712,
+      "max_logged_grad_norm": 2.7920193672180176,
+      "peak_mem_gib": 7.23382043838501
+    },
+    "base_seed1": {
+      "sha256": "1002cb88b0a49d2dd2e875671faf37e1f8b3664dbf2cc5a2d2aa02f8fc3cb824",
+      "train_records": 151,
+      "eval_records": 31,
+      "final": {
+        "type": "eval",
+        "step": 3014,
+        "tokens": 790102016,
+        "val_loss": 3.330450100558145,
+        "val": {
+          "code": 2.0032745003700256,
+          "en_web": 3.2810537815093994,
+          "en_web_dclm": 3.9551326036453247,
+          "en_wiki": 3.001750349998474,
+          "math": 2.781813144683838,
+          "zh_web": 4.225165128707886,
+          "zh_wiki": 4.064961194992065
+        }
+      },
+      "steady_step_s_median": 1.268124321103096,
+      "max_logged_grad_norm": 2.6794464588165283,
+      "peak_mem_gib": 7.23382043838501
+    },
+    "base_seed2": {
+      "sha256": "da24d08f2a29dbf186662ec811cf7d43a31332f4cf33b93f55941ed017d35018",
+      "train_records": 151,
+      "eval_records": 31,
+      "final": {
+        "type": "eval",
+        "step": 3014,
+        "tokens": 790102016,
+        "val_loss": 3.334124207496643,
+        "val": {
+          "code": 2.011579990386963,
+          "en_web": 3.283964514732361,
+          "en_web_dclm": 3.9606751203536987,
+          "en_wiki": 3.001005530357361,
+          "math": 2.792478561401367,
+          "zh_web": 4.221628427505493,
+          "zh_wiki": 4.067537307739258
+        }
+      },
+      "steady_step_s_median": 1.267084440216422,
+      "max_logged_grad_norm": 1.3981796503067017,
+      "peak_mem_gib": 7.23382043838501
+    }
+  }
+}

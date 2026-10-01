@@ -37,3 +37,6 @@ uv.toml
 
 # 训练输出（checkpoint、metrics.jsonl）
 /runs/
+
+# Rangpur 完整备份（权重、数据、环境快照）
+/backups/

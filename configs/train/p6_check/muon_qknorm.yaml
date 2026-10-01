@@ -1,0 +1,31 @@
+# P6 组合验证：对比 P5b A1 只增加 QK-Norm。
+# 保持 0.790B tokens 和 v1 数据，验证组合；不是 250M 或 v2 验收。
+model: configs/model/s2_qknorm.yaml
+train_data: data/p5/mix/train_*.bin
+val_data: data/p5/mix/val_*.bin
+tokenizer: tokenizer/mt32k.json
+run_dir: runs/p6_check/muon_qknorm
+
+seq_len: 2048
+global_batch_tokens: 262144
+micro_batch_size: 16
+max_steps: 3014                     # 3014 × 262144 ≈ 0.79B tokens，和第一轮相同
+
+lr: 2.0e-3                        # AdamW 那一半（嵌入和一维参数）仍用它
+optimizer: muon
+muon_lr: 0.02
+warmup_steps: 151                   # 5%
+schedule: wsd
+
+dtype: bfloat16
+compile: true
+ce_chunk: 4096
+z_loss: 1.0e-4
+
+seed: 0
+log_every: 20
+eval_every: 100
+eval_batches: 14
+ckpt_every: 500
+ckpt_keep: 2
+final_weights_only: true
