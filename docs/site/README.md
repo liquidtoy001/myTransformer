@@ -1,6 +1,6 @@
 # 项目 HTML 介绍
 
-`index.html` 是本地分页介绍的维护源，2026-10-03 更新。保留原阶段报告的章节，并加入第二轮消融、组合验证和 Rangpur 备份清理结果；P6 标为准备阶段，DDP 和正式主训练尚未完成。
+`index.html` 是本地分页介绍的维护源，2026-10-05 更新（DDP 本机验证、备份第二副本）。保留原阶段报告的章节，并加入第二轮消融、组合验证和 Rangpur 备份清理结果；P6 标为准备阶段：DDP 已在本机验证，真机验收和正式主训练尚未完成。chatgpt.site 上的版本需由 Codex 另行更新。
 
 私有云端地址：https://mytransformer-project.liquidtoy001226508.chatgpt.site
 

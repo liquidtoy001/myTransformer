@@ -200,7 +200,7 @@ svg .axisline { stroke: var(--muted); stroke-width: 1; }
 <header class="topbar">
   <button class="menu-btn" id="menu-btn" aria-expanded="false" aria-controls="sidebar">目录</button>
   <a class="brand" href="#overview">myTransformer</a>
-  <span class="badge">阶段报告 · 2026-10-03</span>
+  <span class="badge">阶段报告 · 2026-10-05</span>
   <span class="spacer"></span>
   <a class="gh" href="https://github.com/liquidtoy001/myTransformer">GitHub 仓库 ↗</a>
 </header>
@@ -239,14 +239,14 @@ svg .axisline { stroke: var(--muted); stroke-width: 1; }
 <!-- ======================================================= 概览 -->
 <article class="page" id="overview">
   <p class="crumb">概览</p>
-  <h1>项目概览</h1><div class="note good"><b class="label">最新进展 · 2026-10-03</b><p>P5 两轮与组合验证完成，组合 loss <b>3.2748</b>；Rangpur 完整备份并释放约 9G。当前进入 <b>P6 准备</b>，DDP 与正式数据仍待完成。<a href="#round2">查看最新结果 →</a></p></div>
-  <p class="lead">myTransformer 是一个学习项目：从零实现一个 decoder-only Transformer，亲手走完分词器、数据、模型、预训练、后训练、评测和报告的整条流程。本文档汇总到 2026-10-03 为止的过程、结果、对后续阶段的预期和优化计划。</p>
+  <h1>项目概览</h1><div class="note good"><b class="label">最新进展 · 2026-10-05</b><p>P5 两轮与组合验证完成，组合 loss <b>3.2748</b>；Rangpur 完整备份（本地两份副本）并释放约 9G。<b>DDP 已实现</b>并在本机双进程验证，真实多卡待租机验收；正式数据仍待生成。<a href="#round2">查看最新结果 →</a></p></div>
+  <p class="lead">myTransformer 是一个学习项目：从零实现一个 decoder-only Transformer，亲手走完分词器、数据、模型、预训练、后训练、评测和报告的整条流程。本文档汇总到 2026-10-05 为止的过程、结果、对后续阶段的预期和优化计划。</p>
 
   <dl class="facts">
     <div><dt>主模型</dt><dd>250M<small>236.5M 参数，LLaMA 结构</small></dd></div>
     <div><dt>语言</dt><dd>中英双语<small>偏向中文，另含代码和数学</small></dd></div>
     <div><dt>算力预算</dt><dd>50–100 AUD<small>历史预算约 66 AUD，非当前报价</small></dd></div>
-    <div><dt>进度</dt><dd>P6 准备中<small>P1–P3 完成；P4 单卡完成，DDP 待做</small></dd></div>
+    <div><dt>进度</dt><dd>P6 准备中<small>P1–P4 完成；多卡待真机验收</small></dd></div>
   </dl>
 
   <h2 id="overview-goals">目标</h2>
@@ -290,7 +290,7 @@ svg .axisline { stroke: var(--muted); stroke-width: 1; }
       <tr><td class="m">P1</td><td>分词器</td><td><span class="pill done">完成</span></td><td>mt32k：中文 0.697 token/字，英文 1.447 token/词</td></tr>
       <tr><td class="m">P2</td><td>数据管线</td><td><span class="pill done">完成</span></td><td>P5 用的 2.000B tokens 已打包；P6 的 10.4B tokens 推迟到 P6 前生成</td></tr>
       <tr><td class="m">P3</td><td>模型实现</td><td><span class="pill done">完成</span></td><td>与 HuggingFace 的 LLaMA 实现数值对齐，最大误差 8.9e-8</td></tr>
-      <tr><td class="m">P4</td><td>训练框架</td><td><span class="pill part">基本完成</span></td><td>单卡功能齐全并在 Rangpur 上实际用过；多卡 DDP 还没写，P6 前必须补上</td></tr>
+      <tr><td class="m">P4</td><td>训练框架</td><td><span class="pill done">完成</span></td><td>单卡在 Rangpur 上实际用过；DDP 已实现，本机 CPU 双进程验证通过，GPU + NCCL 待租机后验收</td></tr>
       <tr class="hl"><td class="m">P5</td><td>缩放律与消融</td><td><span class="pill done">实验完成</span></td><td>第一轮 12 个实验、3 个缩放诊断、第二轮 5 个实验与 1 个组合验证已完成</td></tr>
       <tr><td class="m">P6</td><td>正式预训练</td><td><span class="pill">未开始</span></td><td>250M，9.44B tokens，8×H100 竞价</td></tr>
       <tr><td class="m">P7</td><td>退火与后训练</td><td><span class="pill">未开始</span></td><td>长上下文退火、SFT、DPO，得到对话模型</td></tr>
@@ -525,7 +525,7 @@ expected_params:
 
   <h2 id="trainer-todo">还没做的</h2>
   <ul>
-    <li><b>DDP 多卡训练</b>：P6 在 8×H100 上跑，必须先实现并在两张卡上验证 loss 与单卡一致。</li>
+    <li><b>DDP 真机验收</b>：已实现并在本机用 2 个 CPU 进程验证（2 卡≈1 卡、单个 rank 停止时全体停、跨卡数续跑）。NCCL + torch.compile 的组合要在租到的机器上用 <code>scripts/cloud/ddp_check.sh</code> 验收。</li>
     <li><b>逐步记录梯度范数峰值</b>：现在每 20 步记一次，两次记录之间的尖峰看不到。</li>
   </ul>
 </article>
@@ -798,8 +798,8 @@ lse = ce + target                         <span class="c"># 不再单独调用 l
 <ul><li>归档 SHA256 与远端一致；逐文件核对内容、大小与符号链接信息。</li><li>21 份最终权重和 2 份 smoke checkpoint 严格加载并完成短前向；22 份指标文件可解析。</li><li>删除前重新核对远端全部源文件未改变，并确认没有其他作业。</li></ul>
 <h2 id="backup-space">空间与保留内容</h2>
 <div class="table"><table><thead><tr><th>项目</th><th>清理前</th><th>清理后</th></tr></thead><tbody><tr><td>home 可用空间</td><td>约 2.8G</td><td>约 12G</td></tr><tr><td>项目与专属 venv</td><td>存在</td><td>已删除，归档保留</td></tr><tr><td>课程 miniconda3</td><td>存在</td><td>保留</td></tr></tbody></table></div>
-<p>备份保存在本地 E 盘，含代码、数据、日志、配置、权重和环境记录；未公开上传。当前尚未验证第二块磁盘或对象存储副本。后续使用 Rangpur 需要重新部署。</p>
-<h2 id="backup-next">当前下一步</h2><p>先完成 DDP、主模型配置和正式中文数据准备；再在云端做多卡短测、恢复验证和实测成本评估。没有正在进行的 250M 正式训练，也没有保留定时检查任务。</p>
+<p>备份保存在本地 E 盘，2026-10-05 复制到 F 盘并核对 SHA256 一致；含代码、数据、日志、配置、权重和环境记录，未公开上传。后续使用 Rangpur 需要重新部署。</p>
+<h2 id="backup-next">当前下一步</h2><p>DDP 已完成本机验证；接下来是主模型配置和正式中文数据准备；再在云端做多卡短测、恢复验证和实测成本评估。没有正在进行的 250M 正式训练，也没有保留定时检查任务。</p>
 <p>来源：reports/rangpur-backup-2026-10-02.md；容量为当时 df 的舍入读数。</p>
 </article>
 <article class="page" id="pitfalls" hidden>
@@ -900,7 +900,7 @@ lse = ce + target                         <span class="c"># 不再单独调用 l
     <thead><tr><th style="width:30%">风险</th><th style="width:70%">应对</th></tr></thead>
     <tbody>
       <tr><td>竞价实例被回收</td><td>接力续训已在 Rangpur 验证；计划把 checkpoint 定期同步到对象存储</td></tr>
-      <tr><td>DDP 实现有误</td><td>开跑前在 2 张卡上对比单卡 loss 曲线</td></tr>
+      <tr><td>DDP 实现有误</td><td>本机双进程测试已通过；开跑前用 ddp_check.sh 在真机上对比 1 卡与 2 卡、测吞吐、测信号续跑</td></tr>
       <tr><td>loss 尖峰</td><td>A7 验证 QK-Norm 加 z-loss 的稳定性；逐步记录梯度范数峰值</td></tr>
       <tr><td>学习率不合适</td><td>P5 的 A5 暗示 2e-3 对 39M 偏低；P6 的 7e-4 还没扫过，先做学习率扫描</td></tr>
     </tbody>
@@ -911,7 +911,7 @@ lse = ce + target                         <span class="c"># 不再单独调用 l
 <article class="page" id="plan" hidden>
   <p class="crumb">展望</p>
   <h1>后续优化计划</h1>
-  <p class="lead">P5 与 Rangpur 收尾已完成。接下来优先补 DDP、正式数据与主模型短测，然后才启动 P6 付费训练。</p>
+  <p class="lead">P5 与 Rangpur 收尾已完成。DDP 已实现；接下来是正式数据与主模型短测，然后才启动 P6 付费训练。</p>
 
   <h2 id="plan-p5">P5 收尾</h2>
   <ul>
@@ -922,7 +922,7 @@ lse = ce + target                         <span class="c"># 不再单独调用 l
 
   <h2 id="plan-p6">P6 开跑前必须完成</h2>
   <ol>
-    <li><b>实现 DDP</b>，在 2 张卡上验证 loss 与单卡一致，续训和信号处理在多卡下也要能用。</li>
+    <li><b>DDP</b>：✅ 已实现并通过本机双进程测试（<code>tests/test_ddp.py</code>）；租机后先跑 <code>scripts/cloud/ddp_check.sh</code>。</li>
     <li><b>生成 P6 数据</b>：v2 配比 10.4B tokens，逐分片上传对象存储（约 19 GB，home 放不下）。</li>
     <li><b>统一分叉点</b>：改到约第 7740 步，与缩放阶梯的 20 tokens/非嵌入参数一致。</li>
     <li><b>先租 1% 时间测 MFU</b>：在 H100 上跑几十步，用实测值重算时长和费用。</li>
@@ -969,7 +969,7 @@ lse = ce + target                         <span class="c"># 不再单独调用 l
 
 
 <nav class="pager" id="pager" aria-label="翻页"></nav>
-<p class="foot">数据截至 2026-10-03。来源：myTransformer 仓库的 reports/ 与 docs/ 目录。</p>
+<p class="foot">数据截至 2026-10-05。来源：myTransformer 仓库的 reports/ 与 docs/ 目录。</p>
 </main>
 
 <aside class="toc" id="toc" aria-label="本页目录"></aside>

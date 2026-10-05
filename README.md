@@ -11,6 +11,22 @@
 
 ---
 
+## 当前进度（2026-10-05）
+
+| 阶段 | 状态 | 要点 |
+|---|---|---|
+| P1 分词器 | ✅ | mt32k：中文 0.697 token/字，英文 1.447 token/词（[报告](reports/tokenizer.md)） |
+| P2 数据管线 | ✅ | P5 用 2.000B tokens；P6 的 v2（中文 35%）10.4B tokens 待在本机生成 |
+| P3 模型 | ✅ | 与 HF LLaMA 数值对齐 8.9e-8 |
+| P4 训练框架 | ✅（多卡待真机验收） | 分块 CE、接力续训、续跑自检；**DDP 已实现**，本机 CPU 双进程验证（[笔记](docs/learn/p4-7-ddp.md)），GPU + NCCL 待租机后跑 `scripts/cloud/ddp_check.sh` |
+| P5 缩放律与消融 | ✅ | 250M 外推 ≈ 2.74；组合 Muon + QK-Norm + z-loss 最好（39M 上 3.2748）（[消融](reports/ablation.md)、[第二轮](reports/ablation_round2.md)、[组合](reports/p6_combination.md)、[缩放律](reports/scaling.md)） |
+| P6 正式预训练 | 准备中 | 下一步：P6 配置、分叉点统一到约第 7740 步、生成 v2 数据、租机验收 |
+| P7–P8 | 未开始 | |
+
+Rangpur 上的实验已全部完成、完整备份（两份本地副本）并清理（[记录](reports/rangpur-backup-2026-10-02.md)）。项目介绍页：[docs/site/index.html](docs/site/index.html)。
+
+---
+
 ## 目标模型规格
 
 | 项 | ★ **250M（主线）** |
@@ -41,14 +57,14 @@
 | 硬件 | 负责 | 成本 |
 |---|---|---|
 | 本地 RTX 4070 Ti SUPER | P0–P4 开发调试 | 0 |
-| 学院 Rangpur A100 40G（[说明](docs/09-rangpur.md)） | P4 冒烟、P5 缩放律与消融、P7 后训练、P8 评测、数据准备 | 0（约 17 GPU 小时） |
+| 学院 Rangpur A100 40G（[说明](docs/09-rangpur.md)） | P4 冒烟、P5 缩放律与消融（已完成）；P7/P8 如需使用再重新部署 | 0 |
 | 云上 8×H100 竞价 | **仅 P6 正式训练**（2.5 小时） | ~66 AUD |
 
 几个关键取舍：
 
 1. **缩放律第 4 个点用 WSD 分叉拿。** P6 训到 20 tokens/param 时分叉出一支做短衰减，得到与小模型可比的 250M 数据点，约 $1.5 而不是重训的 $15。这是选 WSD 而非 cosine 的实际收益。
 2. **P6 不放 Rangpur**：约 47 GPU 小时在全班共用的 10 块 A100 上太显眼；而且 Rangpur 每节点只有 1 块 GPU，学不到多卡 DDP。
-3. **P6 的数据在 Rangpur `cpu` 分区准备**，逐分片上传对象存储，不在 $12/小时的 GPU 机器上做 CPU 活。
+3. **P6 的数据在本机准备**（原计划 Rangpur `cpu` 分区，但 home 放不下 19 GB 输出），再逐分片上传对象存储，不在 $12/小时的 GPU 机器上做 CPU 活。
 
 **算力买的是模型质量，不是学习收益。** 分词器、数据管线、架构实现、数值对齐、训练框架、缩放律、消融——项目主体全部免费完成。P6 只是把一条已验证的流水线放大跑一次。
 
