@@ -1,0 +1,1039 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>myTransformer 阶段报告</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: docs shell. Sticky top bar, left chapter nav, one reading column, right on-page TOC.
+   One chapter is visible at a time; prev/next pager at the foot of each chapter. */
+:root {
+  --bg: #FAFBFC;
+  --surface: #F1F4F7;
+  --line: #DCE1E7;
+  --ink: #18212C;
+  --muted: #586374;
+  --accent: #2A5DB0;
+  --accent-soft: #E6EEF9;
+  --warn: #A2610F;
+  --warn-soft: #FBF1E2;
+  --good: #2D7A4E;
+  --good-soft: #E4F2E9;
+  --code-bg: #F2F4F7;
+  --f-sans: 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif;
+  --f-mono: 'JetBrains Mono', ui-monospace, Consolas, 'Courier New', monospace;
+  --s-body: 1rem;
+  --s-small: 0.875rem;
+  --s-h1: 2rem;
+  --s-h2: 1.375rem;
+  --s-h3: 1.0625rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1319; --surface: #151C25; --line: #263241; --ink: #E3E8EF; --muted: #9AA6B6;
+    --accent: #7EA8EC; --accent-soft: #19283F; --warn: #E3A657; --warn-soft: #33260F;
+    --good: #6CC08E; --good-soft: #13301F; --code-bg: #121922; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1319; --surface: #151C25; --line: #263241; --ink: #E3E8EF; --muted: #9AA6B6;
+  --accent: #7EA8EC; --accent-soft: #19283F; --warn: #E3A657; --warn-soft: #33260F;
+  --good: #6CC08E; --good-soft: #13301F; --code-bg: #121922; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-sans); font-size: var(--s-body); line-height: 1.75; }
+a { color: var(--accent); text-underline-offset: 3px; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+code, .mono { font-family: var(--f-mono); font-size: 0.9em; }
+:not(pre) > code { background: var(--code-bg); border: 1px solid var(--line); padding: 0.05em 0.35em; border-radius: 4px; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ---------- top bar ---------- */
+.topbar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
+  display: flex; align-items: center; gap: 12px;
+  padding-block: 0; padding-inline: 16px; height: 56px;
+  background: var(--bg); border-bottom: 1px solid var(--line);
+}
+.brand { font-weight: 700; font-size: 1.0625rem; color: var(--ink); text-decoration: none; letter-spacing: 0.01em; }
+.badge { font-size: 0.75rem; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 10px; white-space: nowrap; }
+.topbar .spacer { flex: 1; }
+.topbar .gh { font-size: var(--s-small); color: var(--muted); text-decoration: none; white-space: nowrap; }
+.topbar .gh:hover { color: var(--accent); }
+.menu-btn { display: none; font: inherit; font-size: var(--s-small); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 4px 12px; cursor: pointer; }
+
+/* ---------- shell ---------- */
+.shell { display: grid; grid-template-columns: 264px minmax(0, 1fr) 216px; max-width: 1440px; margin: 0 auto; }
+.sidebar {
+  position: sticky; top: calc(56px + env(safe-area-inset-top, 0px)); align-self: start;
+  height: calc(100vh - 56px); overflow-y: auto;
+  padding-block: 24px 40px; padding-inline: 16px 20px; border-right: 1px solid var(--line);
+}
+.nav-group { display: flex; flex-direction: column; gap: 2px; margin-bottom: 20px; }
+.nav-group h4 { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 6px 10px; }
+.nav-group a { display: block; padding: 5px 10px; border-radius: 6px; color: var(--ink); text-decoration: none; font-size: 0.9375rem; line-height: 1.5; }
+.nav-group a:hover { background: var(--surface); }
+.nav-group a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+
+main { min-width: 0; padding-block: 40px 80px; padding-inline: 48px; }
+.page { max-width: 780px; margin: 0 auto; }
+.crumb { font-size: var(--s-small); color: var(--muted); margin: 0 0 6px; }
+.page h1 { font-size: var(--s-h1); line-height: 1.3; margin: 0 0 12px; text-wrap: balance; letter-spacing: -0.01em; }
+.lead { font-size: 1.0625rem; color: var(--muted); margin: 0 0 32px; }
+.page h2 { font-size: var(--s-h2); line-height: 1.4; margin: 48px 0 12px; padding-top: 16px; border-top: 1px solid var(--line); text-wrap: balance; scroll-margin-top: 72px; }
+.page h2:first-of-type { border-top: 0; padding-top: 0; }
+.page h3 { font-size: var(--s-h3); margin: 28px 0 8px; }
+.page p { margin: 0 0 14px; }
+.page ul, .page ol { margin: 0 0 16px; padding-left: 1.4em; }
+.page li { margin: 4px 0; }
+.page li::marker { color: var(--muted); }
+
+.toc { position: sticky; top: calc(56px + env(safe-area-inset-top, 0px)); align-self: start; padding-block: 40px; padding-inline: 16px; font-size: var(--s-small); }
+.toc h4 { font-size: 0.75rem; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 8px; }
+.toc button { display: block; width: 100%; text-align: left; font: inherit; color: var(--muted); background: none; border: 0; border-left: 2px solid var(--line); padding: 3px 0 3px 12px; cursor: pointer; line-height: 1.5; }
+.toc button:hover { color: var(--accent); border-left-color: var(--accent); }
+
+/* ---------- content components ---------- */
+.table { overflow-x: auto; margin: 8px 0 20px; border: 1px solid var(--line); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9375rem; line-height: 1.55; }
+th, td { padding: 8px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+tr:last-child td { border-bottom: 0; }
+th { background: var(--surface); font-weight: 500; color: var(--muted); font-size: var(--s-small); white-space: nowrap; }
+td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.m { font-family: var(--f-mono); font-size: 0.875rem; white-space: nowrap; }
+tr.hl td { background: var(--accent-soft); }
+.better { color: var(--good); font-weight: 500; }
+.worse { color: var(--warn); font-weight: 500; }
+
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 8px 0 24px; }
+.facts div { background: var(--bg); padding: 14px 16px; min-width: 0; }
+.facts dt { font-size: 0.75rem; letter-spacing: 0.06em; color: var(--muted); }
+.facts dd { margin: 2px 0 0; font-size: 1.125rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.facts dd small { display: block; font-size: 0.8125rem; font-weight: 400; color: var(--muted); }
+
+.note { border: 1px solid var(--line); border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 4px 8px 8px 4px; padding: 12px 16px; margin: 16px 0 20px; font-size: 0.9375rem; }
+.note.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+.note.good { border-left-color: var(--good); background: var(--good-soft); }
+.note b.label { display: block; font-size: 0.75rem; letter-spacing: 0.08em; margin-bottom: 2px; color: var(--accent); }
+.note.warn b.label { color: var(--warn); }
+.note.good b.label { color: var(--good); }
+.note p:last-child { margin-bottom: 0; }
+
+pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; overflow-x: auto; font-size: 0.8125rem; line-height: 1.65; margin: 8px 0 20px; }
+pre code { font-size: inherit; }
+.c { color: var(--muted); }
+.k { color: var(--accent); }
+
+.pill { display: inline-block; font-size: 0.75rem; font-weight: 500; line-height: 1.6; padding: 0 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.pill.done { color: var(--good); background: var(--good-soft); border-color: transparent; }
+.pill.run { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+.pill.part { color: var(--warn); background: var(--warn-soft); border-color: transparent; }
+
+.steps { list-style: none; padding: 0 !important; counter-reset: s; display: flex; flex-direction: column; gap: 0; border-left: 2px solid var(--line); margin-left: 12px !important; }
+.steps li { counter-increment: s; position: relative; padding: 0 0 18px 28px; margin: 0 !important; }
+.steps li::before { content: counter(s); position: absolute; left: -13px; top: 2px; width: 24px; height: 24px; border-radius: 50%; background: var(--bg); border: 2px solid var(--accent); color: var(--accent); font-size: 0.75rem; font-weight: 700; display: grid; place-items: center; line-height: 1; }
+.steps b { display: block; }
+.steps span { color: var(--muted); font-size: 0.9375rem; }
+
+/* diverging bar chart */
+.chart { border: 1px solid var(--line); border-radius: 8px; padding: 16px 16px 12px; margin: 8px 0 20px; }
+.chart .cap { font-size: var(--s-small); color: var(--muted); margin: 0 0 10px; }
+.bars { display: grid; grid-template-columns: minmax(88px, 180px) minmax(0, 1fr) 64px; gap: 6px 12px; align-items: center; font-size: 0.875rem; }
+.bars .lab { color: var(--ink); line-height: 1.3; }
+.bars .val { text-align: right; font-family: var(--f-mono); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.track { position: relative; height: 18px; }
+.track::before { content: ""; position: absolute; left: 50%; top: -4px; bottom: -4px; width: 1px; background: var(--muted); }
+.track .band { position: absolute; top: -4px; bottom: -4px; background: var(--line); opacity: 0.8; }
+.track .bar { position: absolute; top: 2px; height: 14px; border-radius: 2px; }
+.bar.b { right: 50%; background: var(--accent); }
+.bar.w { left: 50%; background: var(--warn); }
+.axis { position: relative; height: 18px; font-size: 0.75rem; color: var(--muted); }
+.axis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.8125rem; color: var(--muted); margin-top: 8px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+
+.svgwrap { overflow-x: auto; }
+.svgwrap svg { display: block; width: 100%; min-width: 520px; height: auto; }
+svg text { font-family: var(--f-sans); fill: var(--muted); font-size: 13px; }
+svg .grid { stroke: var(--line); stroke-width: 1; }
+svg .axisline { stroke: var(--muted); stroke-width: 1; }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin: 8px 0 20px; }
+.cols > section { min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+.cols h3 { margin: 0 0 6px !important; font-size: 1rem; }
+.cols ul { margin: 0 !important; font-size: 0.9375rem; }
+
+/* pager */
+.pager { max-width: 780px; margin: 56px auto 0; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.pager a { display: block; border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; text-decoration: none; min-width: 0; }
+.pager a:hover { border-color: var(--accent); }
+.pager small { display: block; color: var(--muted); font-size: 0.8125rem; }
+.pager strong { color: var(--accent); font-weight: 500; }
+.pager .next { text-align: right; grid-column: 2; }
+.foot { max-width: 780px; margin: 32px auto 0; font-size: 0.8125rem; color: var(--muted); border-top: 1px solid var(--line); padding-top: 16px; }
+
+@media (max-width: 1180px) {
+  .shell { grid-template-columns: 240px minmax(0, 1fr); }
+  .toc { display: none; }
+}
+@media (max-width: 820px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .menu-btn { display: inline-block; }
+  .topbar .gh { display: none; }
+  .sidebar { display: none; position: fixed; left: 0; right: 0; top: calc(56px + env(safe-area-inset-top, 0px)); bottom: 0; height: auto; z-index: 15; background: var(--bg); border-right: 0; }
+  .sidebar.open { display: block; }
+  main { padding-block: 24px 64px; padding-inline: 16px; }
+  .page h1 { font-size: 1.625rem; }
+  .bars { grid-template-columns: minmax(72px, 110px) minmax(0, 1fr) 56px; }
+}
+@media (max-width: 420px) {
+  .badge { display: none; }
+  .pager { grid-template-columns: 1fr; }
+  .pager .next { grid-column: 1; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+</style>
+
+<header class="topbar">
+  <button class="menu-btn" id="menu-btn" aria-expanded="false" aria-controls="sidebar">目录</button>
+  <a class="brand" href="#overview">myTransformer</a>
+  <span class="badge">阶段报告 · 2026-10-03</span>
+  <span class="spacer"></span>
+  <a class="gh" href="https://github.com/liquidtoy001/myTransformer">GitHub 仓库 ↗</a>
+</header>
+
+<div class="shell">
+<nav class="sidebar" id="sidebar" aria-label="章节">
+  <div class="nav-group"><h4>概览</h4>
+    <a href="#overview">项目概览</a>
+    <a href="#status">路线图与进度</a>
+  </div>
+  <div class="nav-group"><h4>已完成的部分</h4>
+    <a href="#tokenizer">P1 分词器</a>
+    <a href="#data">P2 数据管线</a>
+    <a href="#model">P3 模型实现</a>
+    <a href="#trainer">P4 训练框架</a>
+  </div>
+  <div class="nav-group"><h4>P5 实验</h4>
+    <a href="#p5-design">实验设计</a>
+    <a href="#ablation">消融结果</a>
+    <a href="#scaling">缩放律</a>
+    <a href="#round2">第二轮与组合验证</a>
+    <a href="#backup">Rangpur 备份收尾</a>
+  </div>
+  <div class="nav-group"><h4>经验</h4>
+    <a href="#pitfalls">踩坑记录</a>
+    <a href="#lessons">教训</a>
+  </div>
+  <div class="nav-group"><h4>展望</h4>
+    <a href="#expect">P6 预期</a>
+    <a href="#plan">后续优化计划</a>
+  </div>
+</nav>
+
+<main id="main">
+
+<!-- ======================================================= 概览 -->
+<article class="page" id="overview">
+  <p class="crumb">概览</p>
+  <h1>项目概览</h1><div class="note good"><b class="label">最新进展 · 2026-10-03</b><p>P5 两轮与组合验证完成，组合 loss <b>3.2748</b>；Rangpur 完整备份并释放约 9G。当前进入 <b>P6 准备</b>，DDP 与正式数据仍待完成。<a href="#round2">查看最新结果 →</a></p></div>
+  <p class="lead">myTransformer 是一个学习项目：从零实现一个 decoder-only Transformer，亲手走完分词器、数据、模型、预训练、后训练、评测和报告的整条流程。本文档汇总到 2026-10-03 为止的过程、结果、对后续阶段的预期和优化计划。</p>
+
+  <dl class="facts">
+    <div><dt>主模型</dt><dd>250M<small>236.5M 参数，LLaMA 结构</small></dd></div>
+    <div><dt>语言</dt><dd>中英双语<small>偏向中文，另含代码和数学</small></dd></div>
+    <div><dt>算力预算</dt><dd>50–100 AUD<small>历史预算约 66 AUD，非当前报价</small></dd></div>
+    <div><dt>进度</dt><dd>P6 准备中<small>P1–P3 完成；P4 单卡完成，DDP 待做</small></dd></div>
+  </dl>
+
+  <h2 id="overview-goals">目标</h2>
+  <ul>
+    <li><b>完整流程</b>：不调用现成的训练框架，从 BPE 分词器到对话模型，每一步都自己写、自己验证。</li>
+    <li><b>一个能用的小模型</b>：250M 参数的中英双语 base 模型，再做 SFT 和 DPO 得到对话模型。</li>
+    <li><b>学会做实验</b>：用消融和缩放律做决定，而不是凭感觉选超参数。每个结论都要和随机种子的噪声比较。</li>
+    <li><b>学得会</b>：每完成一部分都写一份学习笔记（<code>docs/learn/</code>），讲清楚怎么读代码、怎么验证、下次怎么自己从零搭。</li>
+  </ul>
+
+  <h2 id="overview-limits">约束</h2>
+  <div class="table"><table>
+    <thead><tr><th style="width:30%">资源</th><th style="width:45%">用途</th><th class="r" style="width:25%">成本</th></tr></thead>
+    <tbody>
+      <tr><td>本地 RTX 4070 Ti SUPER</td><td>开发、调试、单元测试、小规模测速</td><td class="r">0</td></tr>
+      <tr><td>UQ Rangpur A100 40GB</td><td>P5 实验已完成并清理；P7/P8 如需使用须重新部署</td><td class="r">0</td></tr>
+      <tr><td>云上 8×H100 竞价</td><td>P6 计划使用；训练暂估 3–5 小时，待实测</td><td class="r">约 66 AUD</td></tr>
+    </tbody>
+  </table></div>
+  <p>Rangpur 是共享集群，限制直接决定了实验怎么安排：</p>
+  <ul>
+    <li>每人同时只能运行 1 个作业，每个作业最长 12 小时。所有实验排成一条接力队列，长实验拆成多个作业续跑。</li>
+    <li>home 目录配额 16 GB。数据、checkpoint 和虚拟环境都挤在里面，所以训完的实验只保留权重。</li>
+    <li>登录节点只做编辑、git 和提交作业；安装、数据处理、训练都放进 Slurm 作业。</li>
+  </ul>
+
+  <h2 id="overview-read">怎么读这份文档</h2>
+  <p>左侧目录按阶段分章，每章一页，页底有上一章和下一章。数字都来自仓库里的实测记录：<code>reports/tokenizer.md</code>、<code>reports/data.md</code>、<code>reports/ablation.md</code>、<code>reports/scaling.md</code>。想先看结论，直接跳到 <a href="#lessons">教训</a> 和 <a href="#expect">P6 预期</a>。</p>
+</article>
+
+<article class="page" id="status" hidden>
+  <p class="crumb">概览</p>
+  <h1>路线图与进度</h1>
+  <p class="lead">路线图共 9 个阶段，每个阶段有验收标准，不达标不进下一阶段。P1–P3 与单卡训练已完成；P5 两轮消融、缩放诊断和组合验证均已完成。Rangpur 已完整备份并释放空间；P6 多卡开发与正式数据准备尚待完成。</p>
+
+  <h2 id="status-table">各阶段状态</h2>
+  <div class="table"><table>
+    <thead><tr><th style="width:8%">阶段</th><th style="width:20%">名称</th><th style="width:14%">状态</th><th style="width:58%">说明</th></tr></thead>
+    <tbody>
+      <tr><td class="m">P0</td><td>跑通参考项目</td><td><span class="pill">未单独进行</span></td><td>没有专门跑参考项目，相关知识在各阶段边做边补</td></tr>
+      <tr><td class="m">P1</td><td>分词器</td><td><span class="pill done">完成</span></td><td>mt32k：中文 0.697 token/字，英文 1.447 token/词</td></tr>
+      <tr><td class="m">P2</td><td>数据管线</td><td><span class="pill done">完成</span></td><td>P5 用的 2.000B tokens 已打包；P6 的 10.4B tokens 推迟到 P6 前生成</td></tr>
+      <tr><td class="m">P3</td><td>模型实现</td><td><span class="pill done">完成</span></td><td>与 HuggingFace 的 LLaMA 实现数值对齐，最大误差 8.9e-8</td></tr>
+      <tr><td class="m">P4</td><td>训练框架</td><td><span class="pill part">基本完成</span></td><td>单卡功能齐全并在 Rangpur 上实际用过；多卡 DDP 还没写，P6 前必须补上</td></tr>
+      <tr class="hl"><td class="m">P5</td><td>缩放律与消融</td><td><span class="pill done">实验完成</span></td><td>第一轮 12 个实验、3 个缩放诊断、第二轮 5 个实验与 1 个组合验证已完成</td></tr>
+      <tr><td class="m">P6</td><td>正式预训练</td><td><span class="pill">未开始</span></td><td>250M，9.44B tokens，8×H100 竞价</td></tr>
+      <tr><td class="m">P7</td><td>退火与后训练</td><td><span class="pill">未开始</span></td><td>长上下文退火、SFT、DPO，得到对话模型</td></tr>
+      <tr><td class="m">P8</td><td>评测与报告</td><td><span class="pill">未开始</span></td><td>下游任务评测、技术报告、模型卡</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="status-compute">算力用量</h2>
+  <dl class="facts">
+    <div><dt>P5 第一轮</dt><dd>17.7 h<small>A100，12 个实验</small></dd></div>
+    <div><dt>缩放诊断</dt><dd>约 4.6 h<small>A100，3 个点重训</small></dd></div>
+    <div><dt>已花费</dt><dd>0 AUD<small>P1–P5 全部免费资源</small></dd></div>
+  </dl>
+
+  <h2 id="status-now">现在在跑什么</h2>
+  <p>第二轮消融（<code>configs/train/p5b/</code>）：3 个种子的基线、A1 Muon 复跑、A7 QK-Norm 加 z-loss。和第一轮只差 batch 和 warmup，用来检验第一轮的结论在步数更充足的设置下是否还成立。详见 <a href="#p5-design">实验设计</a>。</p>
+</article>
+
+<!-- ======================================================= P1 -->
+<article class="page" id="tokenizer" hidden>
+  <p class="crumb">已完成的部分</p>
+  <h1>P1 分词器</h1>
+  <p class="lead">自己训练的 byte-level BPE 分词器 mt32k，词表 32768。中文压缩率与 Qwen2.5 相当，英文比大词表分词器多 7–11% 的 token，这是一张 3.2 万词表要同时分给中文、英文和代码的代价。</p>
+
+  <dl class="facts">
+    <div><dt>词表</dt><dd>32,768<small>32 × 1024</small></dd></div>
+    <div><dt>中文</dt><dd>0.697<small>token / 字（zh_web）</small></dd></div>
+    <div><dt>英文</dt><dd>1.447<small>token / 词（en_web）</small></dd></div>
+    <div><dt>混合</dt><dd>3.894<small>字节 / token</small></dd></div>
+  </dl>
+
+  <h2 id="tok-design">设计要点</h2>
+  <ul>
+    <li><b>byte-level</b>：任何字节序列都能编码，不会出现未知字符。</li>
+    <li><b>数字一位一切</b>：每个数字永远是同一个 token，便于小模型学会进位对齐，代价是总 token 数多 2.2%。</li>
+    <li><b>特殊 token 不从文本里解析</b>：网页里出现 <code>&lt;|endoftext|&gt;</code> 这样的字符串，也只会被当作普通文本编码。</li>
+    <li><b>指纹</b> <code>0a87b9848bf6d598</code>：训练时核对数据是不是用同一个分词器打包的。</li>
+  </ul>
+
+  <h2 id="tok-compare">和主流分词器比较</h2>
+  <div class="table"><table>
+    <thead><tr><th style="width:40%">分词器</th><th class="r" style="width:30%">中文 token/字</th><th class="r" style="width:30%">英文 token/词</th></tr></thead>
+    <tbody>
+      <tr class="hl"><td><b>mt32k（本项目）</b></td><td class="r">0.697</td><td class="r">1.447</td></tr>
+      <tr><td>Qwen2.5</td><td class="r">0.651</td><td class="r">1.353</td></tr>
+      <tr><td>DeepSeek-V3</td><td class="r">0.600</td><td class="r">1.304</td></tr>
+      <tr><td>GPT-4o</td><td class="r">0.795</td><td class="r">1.304</td></tr>
+      <tr><td>Llama-3</td><td class="r">0.844</td><td class="r">1.316</td></tr>
+      <tr><td>GPT-2</td><td class="r">1.994</td><td class="r">1.341</td></tr>
+    </tbody>
+  </table></div>
+  <p>越低越好。其他分词器的词表都在 10 万到 20 万之间，mt32k 只有它们的 1/4 到 1/6。</p>
+
+  <h2 id="tok-vocab">为什么选 32768</h2>
+  <p>词表越大，压缩率越高，但 lm_head 和嵌入层的计算量也越大。对 250M 模型，真正该比的是"处理每个字节的文本要多少算力"：</p>
+  <div class="table"><table>
+    <thead><tr><th style="width:20%">词表</th><th class="r" style="width:20%">字节/token</th><th class="r" style="width:20%">嵌入占比</th><th class="r" style="width:20%">FLOPs/token</th><th class="r" style="width:20%">FLOPs/字节</th></tr></thead>
+    <tbody>
+      <tr><td class="m">16,384</td><td class="r">3.560</td><td class="r">7.6%</td><td class="r">1.77G</td><td class="r">1.035</td></tr>
+      <tr class="hl"><td class="m"><b>32,768</b></td><td class="r">3.894</td><td class="r">14.2%</td><td class="r">1.87G</td><td class="r"><b>1.000</b></td></tr>
+      <tr><td class="m">49,152</td><td class="r">4.060</td><td class="r">19.9%</td><td class="r">1.97G</td><td class="r">1.011</td></tr>
+      <tr><td class="m">65,536</td><td class="r">4.165</td><td class="r">24.9%</td><td class="r">2.07G</td><td class="r">1.035</td></tr>
+    </tbody>
+  </table></div>
+  <p>FLOPs/字节以 32k 为 1。32k 在四个候选里最低：再大，压缩率的提升抵不上多出的计算量。</p>
+
+  <h2 id="tok-accept">验收标准按实测修改</h2>
+  <div class="note warn"><b class="label">修改</b>
+    <p>原定"英文 ≤ 1.35 token/词"在 32k 双语词表下做不到，64k 也只到 1.37。验收改为 zh_web ≤ 0.75、en_web ≤ 1.50、混合字节/token ≥ 3.85，实测 0.697 / 1.447 / 3.894，全部通过。</p>
+  </div>
+</article>
+
+<!-- ======================================================= P2 -->
+<article class="page" id="data" hidden>
+  <p class="crumb">已完成的部分</p>
+  <h1>P2 数据管线</h1>
+  <p class="lead">从 7 个公开数据集下载 11.1 GB 原始文本，经过质量过滤、近似去重、评测去污染，最后分词打包成 2.000B tokens。整条流水线记录用时约 68 分钟；随后将实验分片上传 Rangpur 训练。</p>
+
+  <dl class="facts">
+    <div><dt>原始文本</dt><dd>11.1 GB<small>214 万篇文档</small></dd></div>
+    <div><dt>训练数据</dt><dd>2.000B<small>tokens，20 个分片</small></dd></div>
+    <div><dt>磁盘</dt><dd>3.8 GB<small>uint16 分片</small></dd></div>
+    <div><dt>近似重复</dt><dd>0.9%<small>18,595 篇</small></dd></div>
+  </dl>
+
+  <h2 id="data-sources">数据来源和配比</h2>
+  <div class="table"><table>
+    <thead><tr><th style="width:18%">子集</th><th style="width:52%">来源</th><th class="r" style="width:15%">v1 占比</th><th class="r" style="width:15%">字节/token</th></tr></thead>
+    <tbody>
+      <tr><td class="m">en_web</td><td>HuggingFaceFW/fineweb-edu（sample/10BT）</td><td class="r">41.7%</td><td class="r">4.23</td></tr>
+      <tr><td class="m">en_web_dclm</td><td>mlfoundations/dclm-baseline-1.0</td><td class="r">12.5%</td><td class="r">3.95</td></tr>
+      <tr><td class="m">zh_web</td><td>opencsg/chinese-fineweb-edu-v2</td><td class="r">20.8%</td><td class="r">4.01</td></tr>
+      <tr><td class="m">code</td><td>codeparrot/github-code-clean</td><td class="r">12.5%</td><td class="r">3.16</td></tr>
+      <tr><td class="m">math</td><td>HuggingFaceTB/finemath（4plus）</td><td class="r">6.25%</td><td class="r">3.42</td></tr>
+      <tr><td class="m">en_wiki</td><td>wikimedia/wikipedia 20231101.en</td><td class="r">3.1%</td><td class="r">3.86</td></tr>
+      <tr><td class="m">zh_wiki</td><td>wikimedia/wikipedia 20231101.zh</td><td class="r">3.1%</td><td class="r">3.54</td></tr>
+    </tbody>
+  </table></div>
+  <p>P5 实验用 v1 配比（中文 24%）。消融 A4 之后决定 P6 改用 v2：中文 35.0%、英文 46.2%、代码 12.5%、数学 6.25%，理由见 <a href="#ablation">消融结果</a>。</p>
+
+  <h2 id="data-flow">流水线</h2>
+  <ol class="steps">
+    <li><b>下载</b><span>先探测每个数据集的 3 个 row group，套用过滤规则估出"实际能留下多少"，再按目标 token 数规划下载量。每个任务固定处理 8 个 row group，作业可以随时中断、增量重跑。</span></li>
+    <li><b>质量过滤</b><span>英文网页用对齐 datatrove 语义的 Gopher 规则；中文的 n-gram 阈值按字数 ×3 换算，并要求汉字占比 ≥ 40%；数学不按篇数判重复行；代码用 StarCoder 的规则（自动生成文件、超长行）。</span></li>
+    <li><b>去重</b><span>MinHash-LSH，256 个哈希、32 个 band；再做段落级去重（代码除外）。跨子集重复时按"百科 &gt; 数学、代码 &gt; 网页"保留一份。</span></li>
+    <li><b>去污染</b><span>对 11 个评测集建 13-gram 索引，命中就丢整篇。汉字权重 0.5，并排除 220 个常见 n-gram，降低中文误报。</span></li>
+    <li><b>分词打包</b><span>用 mt32k 编码，按配比用"欠额优先"的混合器交错写入 20 个分片，另留每个子集约 1M tokens 的验证集。</span></li>
+  </ol>
+
+  <h2 id="data-funnel">过滤漏斗</h2>
+  <div class="table"><table>
+    <thead><tr><th>子集</th><th class="r">读入</th><th class="r">质量过滤后</th><th class="r">去重去污染后</th><th class="r">最终 tokens</th><th class="r">用了几轮</th></tr></thead>
+    <tbody>
+      <tr><td class="m">en_web</td><td class="r">1,008,000</td><td class="r">99.2%</td><td class="r">99.4%</td><td class="r">833.3M</td><td class="r">0.76</td></tr>
+      <tr><td class="m">en_web_dclm</td><td class="r">251,710</td><td class="r">98.5%</td><td class="r">99.7%</td><td class="r">250.0M</td><td class="r">0.78</td></tr>
+      <tr><td class="m">zh_web</td><td class="r">576,000</td><td class="r">80.6%</td><td class="r">97.8%</td><td class="r">416.7M</td><td class="r">0.68</td></tr>
+      <tr><td class="m">code</td><td class="r">241,482</td><td class="r">96.2%</td><td class="r">97.7%</td><td class="r">250.0M</td><td class="r">0.57</td></tr>
+      <tr><td class="m">math</td><td class="r">128,000</td><td class="r">94.2%</td><td class="r">99.1%</td><td class="r">125.0M</td><td class="r">0.72</td></tr>
+      <tr><td class="m">en_wiki</td><td class="r">40,000</td><td class="r">95.6%</td><td class="r">99.3%</td><td class="r">62.5M</td><td class="r">1.42</td></tr>
+      <tr><td class="m">zh_wiki</td><td class="r">40,000</td><td class="r">86.0%</td><td class="r">78.3%</td><td class="r">62.5M</td><td class="r">1.27</td></tr>
+    </tbody>
+  </table></div>
+  <p>百分比是相对上一步的保留率。两个维基子集不够配额，重复用了 1.3–1.4 轮，远低于公认对 loss 几乎无影响的 4 轮。</p>
+
+  <h2 id="data-checks">每一步都用"答案已知"的数据检验</h2>
+  <p>过滤器、去重、去污染写错了不会报错，只会悄悄丢掉好数据或放过坏数据。所以每一步都先在结果已知的样本上校准：</p>
+  <div class="table"><table>
+    <thead><tr><th style="width:18%">环节</th><th style="width:42%">发现的问题</th><th style="width:40%">修复后</th></tr></thead>
+    <tbody>
+      <tr><td>质量过滤</td><td>fineweb-edu 本身已经过滤过，却只有 3.8% 能通过：规则的语义和 datatrove 不一致</td><td>对齐 datatrove 语义后保留 99.2%</td></tr>
+      <tr><td>去重</td><td>用构造的近似重复对测召回：128 个哈希只找回 51–84%</td><td>改成 256 个哈希、32 个 band，召回 86–96%</td></tr>
+      <tr><td>去污染</td><td>中文网页被误判为污染的约 9%，大多是命中了常见短语</td><td>汉字权重 0.5，加 220 个排除 n-gram</td></tr>
+      <tr><td>下载规划</td><td>代码和维基下载量不够，最后一个任务被截断</td><td>探测时套用过滤规则，任务大小固定</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="data-findings">几个发现</h2>
+  <ul>
+    <li><b>中文数据集里混着 8.9 万篇英文。</b>zh_web 有 15.4% 的文档因为汉字占比不足被丢，几乎全部来自同一个 parquet 文件（<code>00312.parquet</code>）。没有这条规则，这些英文会占掉中文的配额。</li>
+    <li><b>去重率随规模上升。</b>校准时 2000 篇里找不到重复，214 万篇里找到 1.86 万篇。小样本上"没有重复"说明不了问题。</li>
+    <li><b>评测污染集中在中文网页。</b>zh_web 命中 C-Eval 1566 篇、CMMLU 846 篇；en_web 命中 MMLU 272 篇、HellaSwag 52 篇。C-Eval 和 CMMLU 分别有 27% 和 38% 的题目太短、进不了索引，真实污染率应当更高。</li>
+    <li><b>跨子集重复只有 424 篇</b>，其中 317 篇在 fineweb-edu 与 DCLM 之间（两者都来自 Common Crawl）。</li>
+  </ul>
+</article>
+
+<!-- ======================================================= P3 -->
+<article class="page" id="model" hidden>
+  <p class="crumb">已完成的部分</p>
+  <h1>P3 模型实现</h1>
+  <p class="lead">LLaMA 风格的 decoder-only Transformer，从零实现，和 HuggingFace 的实现逐位对比，最大误差 8.9e-8。同一份代码通过配置文件切换出缩放实验的三个小模型和各组消融。</p>
+
+  <h2 id="model-arch">结构</h2>
+  <ul>
+    <li>RMSNorm 前置归一化</li>
+    <li>RoPE 旋转位置编码（θ = 10000，退火期计划改为 500000）</li>
+    <li>SwiGLU 前馈层</li>
+    <li>GQA 分组查询注意力，用 PyTorch 的 SDPA 计算</li>
+    <li>输入嵌入与输出层共享权重</li>
+  </ul>
+<pre><code><span class="c"># configs/model/250m.yaml（节选）</span>
+vocab_size:   32768
+d_model:      1024
+n_layers:     18
+n_heads:      16
+n_kv_heads:   4          <span class="c"># GQA，每 4 个查询头共享一组 KV</span>
+ffn_hidden:   2816       <span class="c"># 约 8/3 × d_model，取整到 256 的倍数</span>
+max_seq_len:  2048
+tie_embeddings: true
+
+expected_params:
+  total:          236_491_776
+  non_embedding:  202_937_344</code></pre>
+
+  <h2 id="model-ladder">规模阶梯</h2>
+  <div class="table"><table>
+    <thead><tr><th style="width:24%">模型</th><th class="r" style="width:20%">总参数</th><th class="r" style="width:20%">非嵌入参数</th><th style="width:36%">用途</th></tr></thead>
+    <tbody>
+      <tr><td class="m">ladder_s1</td><td class="r">22.0M</td><td class="r">9.44M</td><td>缩放律第 1 点</td></tr>
+      <tr><td class="m">ladder_s2</td><td class="r">39.3M</td><td class="r">22.55M</td><td>缩放律第 2 点，也是消融的底座</td></tr>
+      <tr><td class="m">ladder_s3</td><td class="r">99.5M</td><td class="r">74.34M</td><td>缩放律第 3 点</td></tr>
+      <tr class="hl"><td class="m"><b>250m</b></td><td class="r">236.5M</td><td class="r">202.9M</td><td>P6 主模型，缩放律第 4 点</td></tr>
+    </tbody>
+  </table></div>
+  <p>词表固定 32768，嵌入参数都是 33.6M。小模型里嵌入占比很高（s1 占 57%），所以缩放律按非嵌入参数拟合。</p>
+
+  <h2 id="model-switches">消融开关</h2>
+  <div class="table"><table>
+    <thead><tr><th style="width:28%">开关</th><th style="width:36%">默认</th><th style="width:36%">对照</th></tr></thead>
+    <tbody>
+      <tr><td>激活函数</td><td>SwiGLU</td><td>GeLU（ffn 调到 2112，参数量相同）</td></tr>
+      <tr><td>KV 头数</td><td>GQA（4 组）</td><td>MHA（多 13.9% 参数）</td></tr>
+      <tr><td>QK-Norm</td><td>关</td><td>开（RoPE 之前对 q、k 做 RMSNorm）</td></tr>
+      <tr><td>z-loss</td><td>1e-4</td><td>0</td></tr>
+      <tr><td>优化器</td><td>AdamW</td><td>Muon（二维矩阵）+ AdamW（其余）</td></tr>
+      <tr><td>学习率调度</td><td>WSD</td><td>cosine</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="model-parity">怎么证明实现是对的</h2>
+  <p>把同一组权重分别载入自己的模型和 HuggingFace <code>transformers</code> 的 LLaMA 实现，输入同一批 token 比较 logits，最大绝对误差 <b>8.9e-8</b>，比验收阈值好 3 个数量级。这个测试能同时查出 RoPE 的维度排列、GQA 的头分组、RMSNorm 的 eps 位置这类"能跑但不对"的错误。</p>
+</article>
+
+<!-- ======================================================= P4 -->
+<article class="page" id="trainer" hidden>
+  <p class="crumb">已完成的部分</p>
+  <h1>P4 训练框架</h1>
+  <p class="lead">单卡训练器，为 Rangpur 的限制专门设计：作业随时可能被中断，home 空间很小，一次只能跑一个作业。下面每一项都在真实作业里用过。</p>
+
+  <h2 id="trainer-features">功能</h2>
+  <div class="table"><table>
+    <thead><tr><th style="width:26%">功能</th><th style="width:74%">解决什么问题</th></tr></thead>
+    <tbody>
+      <tr><td>分块交叉熵</td><td>32768 维词表的 logits 不一次性展开，按块计算，反向时重算每块 logits。一个 4×2048 的微批上，loss 部分的峰值显存 3.32 GiB → 0.72 GiB</td></tr>
+      <tr><td>接力续训</td><td>作业到时前收到 SIGUSR1，立刻存 checkpoint 退出；下一个作业从同一步接着跑，数据加载器也能恢复到原位置</td></tr>
+      <tr><td>续训自检</td><td>存档时记下模型对固定输入的输出和下一个 batch 的开头；恢复后重算一遍，对不上就报错。优化器个数变了、训完压缩后又调大 <code>max_steps</code>，也会拒绝续训</td></tr>
+      <tr><td>原子存档</td><td>先写临时文件再改名，作业在写到一半时被杀也不会留下坏的 checkpoint</td></tr>
+      <tr><td>最终评测与瘦身</td><td>训完自动做完整的验证集评测，只保留权重存为 <code>final.pt</code>：470 MB → 157 MB</td></tr>
+      <tr><td>数据核对</td><td>启动时比对分词器指纹和分片大小，防止拿错数据训练</td></tr>
+      <tr><td>分子集验证</td><td>验证集按子集分开算 loss，总 val loss 取 7 个子集的等权平均</td></tr>
+      <tr><td>多优化器</td><td>Muon 负责二维权重矩阵，AdamW 负责嵌入和归一化参数，各自有学习率</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="trainer-signal">接力是怎么接上的</h2>
+<pre><code><span class="c"># scripts/rangpur/train.sbatch（节选）</span>
+<span class="c"># 信号发给批处理 shell；exec 让 python 取代这个 shell，信号才能送到 python</span>
+<span class="k">exec</span> python -m mytransformer.train.pretrain --config "$CONFIG" --max-minutes "${MAX_MINUTES:-225}"</code></pre>
+  <p>作业申请的时长和训练预算由 <code>scripts/rangpur/p5_plan.py</code> 按实测的每步耗时算出，再由 <code>submit_p5.sh</code> 用 <code>--dependency=afterany</code> 串成一条队列。已经有 <code>final.pt</code> 的实验自动跳过。</p>
+  <div class="note good"><b class="label">已验证</b>
+    <p>ladder_s3 的诊断作业在第 2429 步按信号停下并存档，下一个作业从 2429 步续跑到训完。<code>torch.compile</code> 第一次编译时加载的底层库会在 C 层替换信号处理函数，所以第一步之后重新注册一次。</p>
+  </div>
+
+  <h2 id="trainer-todo">还没做的</h2>
+  <ul>
+    <li><b>DDP 多卡训练</b>：P6 在 8×H100 上跑，必须先实现并在两张卡上验证 loss 与单卡一致。</li>
+    <li><b>逐步记录梯度范数峰值</b>：现在每 20 步记一次，两次记录之间的尖峰看不到。</li>
+  </ul>
+</article>
+
+<!-- ======================================================= P5 design -->
+<article class="page" id="p5-design" hidden>
+  <p class="crumb">P5 实验</p>
+  <h1>实验设计</h1>
+  <p class="lead">P5 回答两个问题：哪些设计选择真的有用（消融），以及 250M 模型大概能训到多少 loss（缩放律）。已完成实验在 Rangpur 单张 A100 上执行；当前 Rangpur 项目目录已备份并清理。</p>
+
+  <h2 id="design-rules">三条规则</h2>
+  <ol>
+    <li><b>先量噪声。</b>同一配置换 3 个随机种子，得到 val loss 的标准差 σ = 0.0041。差异小于 2σ（0.0081）的不下结论。</li>
+    <li><b>一次只改一处。</b>每个消融配置和底座只允许差一个字段，由单元测试强制检查，写错配置在提交前就会失败。</li>
+    <li><b>训练量相同。</b>消融之间的 token 预算完全一样，否则比的是谁训得久。</li>
+  </ol>
+<pre><code><span class="c"># tests/test_p5_configs.py（节选）</span>
+ALLOWED = {
+    "a1_muon.yaml":  {"optimizer", "muon_lr"},
+    "a2_gelu.yaml":  {"model"},
+    "a4_mix_v2.yaml": {"train_data", "val_data"},
+    ...
+}
+<span class="k">def</span> test_ablation_changes_exactly_one_thing(name):
+    base, other = raw(BASE), raw(P5 / name)
+    diff = {k <span class="k">for</span> k <span class="k">in</span> base | other <span class="k">if</span> base.get(k) != other.get(k)} - {"run_dir"}
+    <span class="k">assert</span> diff == ALLOWED[name]</code></pre>
+
+  <h2 id="design-setup">底座设置</h2>
+  <div class="table"><table>
+    <thead><tr><th style="width:30%">项目</th><th style="width:35%">第一轮</th><th style="width:35%">第二轮</th></tr></thead>
+    <tbody>
+      <tr><td>模型</td><td colspan="2">ladder_s2（39.3M 参数）</td></tr>
+      <tr><td>训练 tokens</td><td colspan="2">0.79B（约 35 tokens/参数）</td></tr>
+      <tr><td>每步 tokens</td><td class="num">524,288</td><td class="num">262,144</td></tr>
+      <tr><td>步数</td><td class="num">1,507</td><td class="num">3,014</td></tr>
+      <tr><td>warmup</td><td>100 步（6.6%）</td><td>151 步（5%）</td></tr>
+      <tr><td>学习率、调度</td><td colspan="2">2e-3，WSD（最后 10% 衰减）</td></tr>
+      <tr><td>z-loss</td><td colspan="2">1e-4</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="design-list">实验清单</h2>
+  <div class="table"><table>
+    <thead><tr><th style="width:22%">批次</th><th class="r" style="width:10%">数量</th><th style="width:48%">内容</th><th style="width:20%">状态</th></tr></thead>
+    <tbody>
+      <tr><td>第一轮</td><td class="r">12</td><td>3 个种子、6 组消融（A1–A6）、3 个缩放点</td><td><span class="pill done">完成</span></td></tr>
+      <tr><td>缩放诊断</td><td class="r">3</td><td>3 个缩放点按"小 batch、warmup 5%"重训</td><td><span class="pill done">完成</span></td></tr>
+      <tr><td>第二轮</td><td class="r">5</td><td>3 个种子、A1 Muon 复跑、A7 QK-Norm 加 z-loss</td><td><span class="pill done">完成</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="design-why2">为什么要第二轮</h2>
+  <p>缩放诊断发现，第一轮用的"每步 52 万 tokens"对 39M 模型来说步数偏少（见 <a href="#scaling">缩放律</a>）。第一轮的消融是同条件下的相对比较，方向大概率不变，但幅度可能被夸大，尤其是 Muon：它的优势在大 batch、少步数时最明显。第二轮把 batch 减半、步数翻倍，其余不变，检验结论是否还在；同时补上第一轮缺的 A7（QK-Norm 且保留 z-loss），这是 P6 打算用的组合。</p>
+</article>
+
+<!-- ======================================================= ablation -->
+<article class="page" id="ablation" hidden>
+  <p class="crumb">P5 实验</p>
+  <h1>消融结果</h1>
+  <p class="lead">第一轮 6 组消融全部超过了 2σ 的噪声线。但超过噪声只说明差异不是随机种子造成的，不说明实验设计没有偏差。逐条看，只有 A2 是干净的结论。</p>
+
+  <h2 id="abl-noise">噪声</h2>
+  <p>三次完全相同的训练，只换随机种子：val loss 3.4065 / 3.4145 / 3.4092，均值 <b>3.4101</b>，σ = <b>0.0041</b>。各子集的噪声不同，代码最大（σ = 0.0111），分子集比较时用各自的 σ。</p>
+
+  <h2 id="abl-total">总 val loss 的变化</h2>
+  <div class="chart">
+    <p class="cap">相对基线均值 3.4101 的差值。灰色带是 ±2σ（±0.0081）的噪声范围。</p>
+    <div class="bars">
+      <span class="lab">A1 Muon</span><div class="track"><span class="band" style="left:46.6%;width:6.8%"></span><span class="bar b" style="width:33.3%"></span></div><span class="val better">−0.080</span>
+      <span class="lab">A2 GeLU</span><div class="track"><span class="band" style="left:46.6%;width:6.8%"></span><span class="bar w" style="width:6.4%"></span></div><span class="val worse">+0.015</span>
+      <span class="lab">A3 MHA</span><div class="track"><span class="band" style="left:46.6%;width:6.8%"></span><span class="bar b" style="width:15.2%"></span></div><span class="val better">−0.036</span>
+      <span class="lab">A4 中文 35%</span><div class="track"><span class="band" style="left:46.6%;width:6.8%"></span><span class="bar b" style="width:20.0%"></span></div><span class="val better">−0.048</span>
+      <span class="lab">A5 cosine</span><div class="track"><span class="band" style="left:46.6%;width:6.8%"></span><span class="bar w" style="width:43.1%"></span></div><span class="val worse">+0.104</span>
+      <span class="lab">A6 QK-Norm 无 z-loss</span><div class="track"><span class="band" style="left:46.6%;width:6.8%"></span><span class="bar b" style="width:17.8%"></span></div><span class="val better">−0.043</span>
+      <span></span><div class="axis"><span style="left:8.3%">−0.10</span><span style="left:50%">0</span><span style="left:91.7%">+0.10</span></div><span></span>
+    </div>
+    <div class="legend"><span><i style="background:var(--accent)"></i>loss 更低（更好）</span><span><i style="background:var(--warn)"></i>loss 更高（更差）</span></div>
+  </div>
+
+  <h2 id="abl-read">逐条解读</h2>
+  <div class="table"><table>
+    <thead><tr><th style="width:17%">实验</th><th class="r" style="width:11%">差值</th><th style="width:34%">能下的结论</th><th style="width:38%">保留意见</th></tr></thead>
+    <tbody>
+      <tr><td>A1 Muon</td><td class="r better">−0.080</td><td>7 个子集全部更好，效应最大</td><td>AdamW 的学习率 2e-3 没调过，Muon 用的是文献值。部分优势可能来自对手的学习率不在最优点</td></tr>
+      <tr><td>A2 GeLU</td><td class="r worse">+0.015</td><td>SwiGLU 更好，幅度不大</td><td>参数量已对齐，这一条最干净</td></tr>
+      <tr><td>A3 MHA</td><td class="r better">−0.036</td><td>MHA 质量更好</td><td>多 13.9% 参数、KV cache 是 GQA 的 4 倍。问题是省下这些值不值 0.036</td></tr>
+      <tr><td>A4 中文 35%</td><td class="r better">−0.048</td><td>是取舍，不是单纯的改进</td><td>总 loss 更低，是因为 7 个子集里中文占 2 个；英文三个子集都变差</td></tr>
+      <tr><td>A5 cosine</td><td class="r worse">+0.104</td><td>同样峰值学习率下 cosine 明显差</td><td>cosine 的平均学习率只有 WSD 的 55%。更可能是 2e-3 偏低、学习率高的一方占了便宜</td></tr>
+      <tr><td>A6 QK-Norm</td><td class="r better">−0.043</td><td>这个组合比基线好</td><td>同时改了两处，分不清功劳归谁；第 860 步出现过 4.15 的梯度尖峰，基线不超过 2.03</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="abl-a4">A4：中文占比是一笔交换</h2>
+  <div class="chart">
+    <p class="cap">把中文从 24% 提到 35% 后，各子集 val loss 的变化。</p>
+    <div class="bars">
+      <span class="lab">zh_web</span><div class="track"><span class="bar b" style="width:42.5%"></span></div><span class="val better">−0.170</span>
+      <span class="lab">zh_wiki</span><div class="track"><span class="bar b" style="width:40.5%"></span></div><span class="val better">−0.162</span>
+      <span class="lab">code</span><div class="track"><span class="bar b" style="width:14.75%"></span></div><span class="val better">−0.059</span>
+      <span class="lab">math</span><div class="track"><span class="bar b" style="width:6.25%"></span></div><span class="val better">−0.025</span>
+      <span class="lab">en_wiki</span><div class="track"><span class="bar w" style="width:4.75%"></span></div><span class="val worse">+0.019</span>
+      <span class="lab">en_web_dclm</span><div class="track"><span class="bar w" style="width:6%"></span></div><span class="val worse">+0.024</span>
+      <span class="lab">en_web</span><div class="track"><span class="bar w" style="width:9.5%"></span></div><span class="val worse">+0.038</span>
+      <span></span><div class="axis"><span style="left:12.5%">−0.15</span><span style="left:50%">0</span><span style="left:87.5%">+0.15</span></div><span></span>
+    </div>
+    <div class="legend"><span><i style="background:var(--accent)"></i>更好</span><span><i style="background:var(--warn)"></i>更差</span></div>
+  </div>
+  <p>用英文三个子集各约 +0.02 到 +0.04，换中文约 −0.17。代码和数学的占比没变却也变好了，原因还不清楚。</p>
+  <div class="note good"><b class="label">已决定（2026-09-27）</b><p>P6 使用 v2 配比（中文 35%）。这个模型的定位偏向中文，这笔交换值得。</p></div>
+
+  <h2 id="abl-decisions">据此做的决定</h2>
+  <div class="table"><table>
+    <thead><tr><th style="width:22%">问题</th><th style="width:33%">决定</th><th style="width:45%">理由</th></tr></thead>
+    <tbody>
+      <tr><td>激活函数</td><td>保持 SwiGLU</td><td>结论干净</td></tr>
+      <tr><td>GQA 还是 MHA</td><td>保持 GQA</td><td>推理时 KV cache 省 4 倍，0.036 的代价可以接受</td></tr>
+      <tr><td>中文占比</td><td>v2（35%）</td><td>见上</td></tr>
+      <tr><td>学习率调度</td><td>保持 WSD</td><td>P6 的第 4 个缩放点要靠 WSD 分叉拿到</td></tr>
+      <tr><td>优化器</td><td>Muon 列为候选</td><td>第二轮及组合验证均有改善；主模型仍需学习率与多卡短测</td></tr>
+      <tr><td>QK-Norm</td><td>组合验证通过</td><td>Muon + QK-Norm + z-loss 在 39M/v1/seed 0 上达到 3.2748；不是 250M 验收</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="abl-zloss">意外发现：z-loss 让训练慢了 43%</h2>
+  <p>A6 每步只要 1.66 秒，同规模的其他实验都是 3.42 秒左右。QK-Norm 不可能让训练变快，于是在本机同一张卡上只切换两个开关测速：</p>
+  <div class="table"><table>
+    <thead><tr><th>QK-Norm</th><th>z-loss</th><th class="r">每个微批</th><th class="r">峰值显存</th></tr></thead>
+    <tbody>
+      <tr><td>关</td><td>开（基线）</td><td class="r">729 ms</td><td class="r">6.56 GiB</td></tr>
+      <tr><td>关</td><td>关</td><td class="r">509 ms</td><td class="r">5.56 GiB</td></tr>
+      <tr><td>开</td><td>关（A6）</td><td class="r">582 ms</td><td class="r">6.34 GiB</td></tr>
+    </tbody>
+  </table></div>
+  <p>原实现先算一次交叉熵，再单独算一次 <code>logsumexp</code>，在 32768 维词表上把 softmax 算了两遍。交叉熵 = logsumexp − 正确答案的 logit，所以可以直接复用：</p>
+<pre><code><span class="c"># src/mytransformer/model/transformer.py</span>
+mask = y != -100
+ce = F.cross_entropy(logits, y, ignore_index=-100, reduction="none")
+target = logits.gather(-1, y.clamp_min(0).unsqueeze(-1)).squeeze(-1)
+lse = ce + target                         <span class="c"># 不再单独调用 logsumexp</span>
+<span class="k">return</span> ce.sum() + z_loss * lse[mask].pow(2).sum()</code></pre>
+  <p>本机开销从 43% 降到 11%，数值完全一致。Rangpur 上 s2 规模每 52 万 tokens 从 3.37 秒降到 2.53 秒，<b>快了 33%</b>（MFU 16.8% → 22.3%）。A6 和 A5 在同一个节点上跑，剩下的速度差来自编译后的计算路径，不能仅凭这些日志完全排除运行环境的影响。</p>
+</article>
+
+<!-- ======================================================= scaling -->
+<article class="page" id="scaling" hidden>
+  <p class="crumb">P5 实验</p>
+  <h1>缩放律</h1>
+  <p class="lead">用 3 个小模型的 loss 外推 250M 能训到多少。第一次拟合给出 2.27 到 2.94 的范围，没法用；查下去发现是实验设计让小模型步数不够。按新规则重训后，最佳估计是 250M ≈ 2.74。</p>
+
+  <h2 id="sc-trap">第一次拟合为什么不能用</h2>
+  <p>三个点共用每步 52 万 tokens 的 batch 和 100 步 warmup，看起来条件相同。但 s1 总共只有 360 步，warmup 占了 28%，真正用峰值学习率训练的只有六成；s3 有 2836 步，warmup 只占 3.5%。小模型被"步数不够"拖了后腿，曲线被硬掰弯。</p>
+  <p>诊断方法：同样的模型、同样的 token 数，只把 batch 缩小、warmup 改成总步数的 5%。</p>
+  <div class="table"><table>
+    <thead><tr><th>模型</th><th>旧：batch / 步数 / warmup</th><th class="r">旧 loss</th><th>新：batch / 步数 / warmup</th><th class="r">新 loss</th><th class="r">差</th></tr></thead>
+    <tbody>
+      <tr><td class="m">s1</td><td class="num">512k / 360 / 28%</td><td class="r">4.9946</td><td class="num">128k / 1440 / 5%</td><td class="r">4.0797</td><td class="r better">−0.915</td></tr>
+      <tr><td class="m">s2</td><td class="num">512k / 860 / 12%</td><td class="r">3.6645</td><td class="num">256k / 1720 / 5%</td><td class="r">3.5302</td><td class="r better">−0.134</td></tr>
+      <tr><td class="m">s3</td><td class="num">512k / 2836 / 4%</td><td class="r">3.0694</td><td class="num">256k / 5672 / 5%</td><td class="r">3.0174</td><td class="r better">−0.052</td></tr>
+    </tbody>
+  </table></div>
+  <p>模型越小，固定大 batch 造成的伤害越大。s1 在完全相同的 token 数下，只因为步数够了，loss 就降了 0.91。</p>
+
+  <h2 id="sc-chart">新规则下的拟合</h2>
+  <div class="chart">
+    <p class="cap">横轴是非嵌入参数（对数刻度），纵轴是训完的 val loss。每个点训练 20 tokens/非嵌入参数。</p>
+    <div class="svgwrap">
+    <svg viewBox="0 0 760 440" role="img" aria-label="缩放律拟合图：旧规则三点、新规则三点、拟合曲线与 250M 预测">
+      <line class="grid" x1="64" y1="321.5" x2="740" y2="321.5"/>
+      <line class="grid" x1="64" y1="253" x2="740" y2="253"/>
+      <line class="grid" x1="64" y1="184.4" x2="740" y2="184.4"/>
+      <line class="grid" x1="64" y1="115.9" x2="740" y2="115.9"/>
+      <line class="grid" x1="64" y1="47.4" x2="740" y2="47.4"/>
+      <line class="grid" x1="176.7" y1="20" x2="176.7" y2="390"/>
+      <line class="grid" x1="355.9" y1="20" x2="355.9" y2="390"/>
+      <line class="grid" x1="552.2" y1="20" x2="552.2" y2="390"/>
+      <line class="grid" x1="731.4" y1="20" x2="731.4" y2="390"/>
+      <line class="axisline" x1="64" y1="390" x2="740" y2="390"/>
+      <line class="axisline" x1="64" y1="20" x2="64" y2="390"/>
+      <text x="56" y="394" text-anchor="end">2.5</text>
+      <text x="56" y="325.5" text-anchor="end">3.0</text>
+      <text x="56" y="257" text-anchor="end">3.5</text>
+      <text x="56" y="188.4" text-anchor="end">4.0</text>
+      <text x="56" y="119.9" text-anchor="end">4.5</text>
+      <text x="56" y="51.4" text-anchor="end">5.0</text>
+      <text x="176.7" y="410" text-anchor="middle">10M</text>
+      <text x="355.9" y="410" text-anchor="middle">30M</text>
+      <text x="552.2" y="410" text-anchor="middle">100M</text>
+      <text x="731.4" y="410" text-anchor="middle">300M</text>
+      <text x="402" y="434" text-anchor="middle">非嵌入参数</text>
+      <text x="16" y="205" text-anchor="middle" transform="rotate(-90 16 205)">val loss</text>
+      <!-- old → new drops -->
+      <line x1="167.3" y1="54" x2="167.3" y2="166" style="stroke:var(--muted)" stroke-width="1" stroke-dasharray="3 4"/>
+      <line x1="309.3" y1="236" x2="309.3" y2="242" style="stroke:var(--muted)" stroke-width="1" stroke-dasharray="3 4"/>
+      <!-- fit: solid through measured range, dashed extrapolation -->
+      <polyline fill="none" style="stroke:var(--accent)" stroke-width="2" points="120.3,142.6 134.9,152.5 149.4,162.1 164.0,171.4 178.5,180.3 193.1,189.0 207.6,197.4 222.2,205.5 236.8,213.4 251.3,221.0 265.9,228.3 280.4,235.4 295.0,242.3 309.5,248.9 324.1,255.3 338.6,261.5 353.2,267.5 367.7,273.3 382.3,279.0 396.8,284.4 411.4,289.6 425.9,294.7 440.5,299.6 455.0,304.4 469.6,308.9 484.2,313.4 498.7,317.7 503.9,319.1"/>
+      <polyline fill="none" style="stroke:var(--accent)" stroke-width="2" stroke-dasharray="6 5" points="503.9,319.1 513.3,321.8 527.8,325.8 542.4,329.7 556.9,333.5 571.5,337.1 586.0,340.6 600.6,344.0 615.1,347.3 629.7,350.5 644.2,353.5 658.8,356.5 667.6,358.2 687.9,362.1 702.4,364.8"/>
+      <!-- old points (hollow) -->
+      <circle cx="167.3" cy="48.1" r="5.5" style="fill:var(--bg);stroke:var(--muted)" stroke-width="2"/>
+      <circle cx="309.3" cy="230.4" r="5.5" style="fill:var(--bg);stroke:var(--muted)" stroke-width="2"/>
+      <circle cx="503.9" cy="312.0" r="5.5" style="fill:var(--bg);stroke:var(--muted)" stroke-width="2"/>
+      <text x="179" y="52">旧 s1 4.99</text>
+      <text x="321" y="226">旧 s2 3.66</text>
+      <text x="494" y="300" text-anchor="end">旧 s3 3.07</text>
+      <!-- new points -->
+      <circle cx="167.3" cy="173.5" r="6" style="fill:var(--accent)"/>
+      <circle cx="309.3" cy="248.8" r="6" style="fill:var(--accent)"/>
+      <circle cx="503.9" cy="319.1" r="6" style="fill:var(--accent)"/>
+      <text x="152" y="200" text-anchor="end" style="fill:var(--ink)">s1 4.08</text>
+      <text x="300" y="274" text-anchor="end" style="fill:var(--ink)">s2 3.53</text>
+      <text x="512" y="344" style="fill:var(--ink)">s3 3.02</text>
+      <!-- prediction -->
+      <rect x="661.6" y="352.2" width="12" height="12" transform="rotate(45 667.6 358.2)" style="fill:var(--warn)"/>
+      <text x="667.6" y="334" text-anchor="middle" style="fill:var(--warn)">250M 预测 2.73</text>
+    </svg>
+    </div>
+    <div class="legend"><span><i style="background:var(--muted)"></i>旧规则（空心）</span><span><i style="background:var(--accent)"></i>新规则与拟合曲线（虚线为外推）</span><span><i style="background:var(--warn)"></i>250M 外推值</span></div>
+  </div>
+
+  <h2 id="sc-fits">几种拟合并排比较</h2>
+  <div class="table"><table>
+    <thead><tr><th>横轴</th><th>形式</th><th class="r">α</th><th class="r">L∞</th><th class="r">外推 250M</th><th>可信吗</th></tr></thead>
+    <tbody>
+      <tr class="hl"><td>非嵌入参数</td><td class="m">L∞ + A·x^−α</td><td class="r">0.376</td><td class="r">2.110</td><td class="r"><b>2.732</b></td><td>α 在文献范围内</td></tr>
+      <tr><td>非嵌入参数</td><td class="m">A·x^−α</td><td class="r">0.145</td><td class="r">—</td><td class="r">2.595</td><td>拟合尚可，没有不可约项会偏低</td></tr>
+      <tr><td>总参数</td><td class="m">L∞ + A·x^−α</td><td class="r">0.731</td><td class="r">2.489</td><td class="r">2.770</td><td>α 远超文献范围</td></tr>
+      <tr><td>总参数</td><td class="m">A·x^−α</td><td class="r">0.197</td><td class="r">—</td><td class="r">2.526</td><td>残差太大</td></tr>
+      <tr class="hl"><td>计算量 C</td><td class="m">L∞ + A·x^−α</td><td class="r">0.248</td><td class="r">2.263</td><td class="r"><b>2.742</b></td><td>α 在文献范围内</td></tr>
+      <tr><td>计算量 C</td><td class="m">A·x^−α</td><td class="r">0.085</td><td class="r">—</td><td class="r">2.571</td><td>拟合尚可</td></tr>
+    </tbody>
+  </table></div>
+  <p><b>最佳估计：250M ≈ 2.74</b>，来自两种 α 合理的三参数拟合（2.732 和 2.742）。按非嵌入参数拟合的 α = 0.376，接近 Chinchilla 的约 0.34。</p>
+  <div class="note warn"><b class="label">局限</b><p>三个点拟三个参数，残差必然为 0，这本身什么也证明不了。这只是三个点的探索性外推，不是置信区间；需要 P6 第四个点检验。</p></div>
+
+  <h2 id="sc-premise">预测的前提</h2>
+  <ol>
+    <li>训练 20 tokens/非嵌入参数，即 4.06B tokens，衰减段占 10%。</li>
+    <li>数据是 v1 配比。P6 用 v2，A4 在小模型上有改善，但不能把约 0.05 的收益直接外推到主模型。</li>
+    <li>验证集相同：各子集 1M tokens，7 个子集等权平均。</li>
+  </ol>
+
+  <h2 id="sc-midrun">中途对比会夸大最终差距</h2>
+  <p>在同样 token 数、恒定学习率时比较，s2 新旧差 0.26、s3 差 0.20；训完之后只差 0.13 和 0.05。大 batch 的一方在最后的学习率衰减里追回了很多。中途对比能判断"有没有问题"，不能估计"问题有多大"。</p>
+</article>
+
+<!-- ======================================================= pitfalls -->
+<article class="page" id="round2" hidden>
+<p class="crumb">P5 收尾 · 2026-10-03 更新</p><h1>第二轮与组合验证</h1>
+<p class="lead">训练规则改善后，Muon 和 QK-Norm 的收益仍然存在；组合成为 P6 优先候选。250M 主模型还没有开始正式训练。</p>
+<h2 id="round2-protocol">同一预算下比较</h2>
+<p>约 39.3M 参数，v1 数据，序列 2048，每步 262,144 tokens，3014 步，合计 790,102,016 tokens。warmup 151 步、WSD；消融各 seed 0，基线三种子。</p>
+<div class="table"><table><thead><tr><th>配置</th><th>最终 val loss</th><th>相对基线均值</th><th>证据</th></tr></thead><tbody>
+<tr><td>AdamW 基线</td><td>3.3373</td><td>—</td><td>3 种子，σ=0.0089</td></tr>
+<tr><td>Muon</td><td>3.3048</td><td>−0.0325</td><td>单 seed</td></tr>
+<tr><td>QK-Norm + z-loss</td><td>3.3087</td><td>−0.0286</td><td>单 seed</td></tr>
+<tr class="hl"><td>Muon + QK-Norm + z-loss</td><td><b>3.2748</b></td><td><b>−0.0625</b></td><td>单 seed；作业 620696</td></tr>
+</tbody></table></div>
+<h2 id="round2-findings">哪些结论改变了</h2>
+<ul><li>Muon 相对基线的优势由第一轮 0.0799 缩小为 0.0325，约缩小 59%。更强的基线改变了对收益幅度的判断。</li><li>两种单独改动只相差 0.0038，不足以可靠排序；2σ 是经验尺度，不能当作正式显著性检验。</li><li>组合七个子集都低于单独方案，中文均值为 4.0841。但单次结果不能证明收益普遍可加，也不能保证迁移至 250M 和中文 v2 数据。</li></ul>
+<h2 id="round2-stability">稳定性与验收边界</h2>
+<p>Muon 单独在 step 40 记录到裁剪前梯度范数 8.35；组合为 3.47。组合后期采样峰值 0.90，稳态每步耗时中位数 1.322 秒。每 20 步采样可能漏掉中间尖峰，不能声明连续每步都稳定。</p>
+<div class="note good"><b class="label">已验证</b><p>日志与权重元信息确认提交 1b50b77；训练正常结束。权重已严格加载并通过 CPU 短前向有限值检查。未把这项检查描述为完整验证集重跑或 DDP 验收。</p></div>
+<p>来源：reports/ablation_round2.md、reports/p6_combination.md 和相应 evidence.json。</p>
+</article>
+<article class="page" id="backup" hidden>
+<p class="crumb">Rangpur 收尾 · 2026-10-02 完成</p><h1>完整备份与空间释放</h1>
+<p class="lead">实验成果已完整拉回，远端项目目录已清理，空间交还给后续课程项目。课程基础环境保留。</p>
+<dl class="facts"><div><dt>完整归档</dt><dd>9.48 GiB</dd></div><div><dt>核对条目</dt><dd>14,983</dd></div><div><dt>权重与存档</dt><dd>23 份</dd></div></dl>
+<h2 id="backup-checks">通过了哪些检查</h2>
+<ul><li>归档 SHA256 与远端一致；逐文件核对内容、大小与符号链接信息。</li><li>21 份最终权重和 2 份 smoke checkpoint 严格加载并完成短前向；22 份指标文件可解析。</li><li>删除前重新核对远端全部源文件未改变，并确认没有其他作业。</li></ul>
+<h2 id="backup-space">空间与保留内容</h2>
+<div class="table"><table><thead><tr><th>项目</th><th>清理前</th><th>清理后</th></tr></thead><tbody><tr><td>home 可用空间</td><td>约 2.8G</td><td>约 12G</td></tr><tr><td>项目与专属 venv</td><td>存在</td><td>已删除，归档保留</td></tr><tr><td>课程 miniconda3</td><td>存在</td><td>保留</td></tr></tbody></table></div>
+<p>备份保存在本地 E 盘，含代码、数据、日志、配置、权重和环境记录；未公开上传。当前尚未验证第二块磁盘或对象存储副本。后续使用 Rangpur 需要重新部署。</p>
+<h2 id="backup-next">当前下一步</h2><p>先完成 DDP、主模型配置和正式中文数据准备；再在云端做多卡短测、恢复验证和实测成本评估。没有正在进行的 250M 正式训练，也没有保留定时检查任务。</p>
+<p>来源：reports/rangpur-backup-2026-10-02.md；容量为当时 df 的舍入读数。</p>
+</article>
+<article class="page" id="pitfalls" hidden>
+  <p class="crumb">经验</p>
+  <h1>踩坑记录</h1>
+  <p class="lead">按代价从高到低排列。每一个都已经修复，并在仓库里留了测试或文档。</p>
+
+  <h2 id="pit-list">训练与实验</h2>
+  <div class="table"><table>
+    <thead><tr><th style="width:22%">问题</th><th style="width:40%">怎么发现的</th><th style="width:38%">怎么修的</th></tr></thead>
+    <tbody>
+      <tr><td>缩放阶梯步数不足</td><td>第一次拟合的外推范围宽达 0.67，两参数幂律残差 ±0.3</td><td>每个点步数都要够、warmup 统一 5%，3 个点全部重训</td></tr>
+      <tr><td>z-loss 算了两遍 softmax</td><td>A6 关掉 z-loss 后快了一倍，本机只切开关测速定位</td><td>复用交叉熵得到 logsumexp；开销 43% → 11%，Rangpur 提速 33%</td></tr>
+      <tr><td>按假设估时，作业被截断</td><td>估时假设 MFU 25%，实测只有 11%，冒烟作业停在 303/360 步</td><td><code>p5_plan.py</code> 改用实测每步耗时，加 15% 余量</td></tr>
+      <tr><td>训完没有最终评测</td><td>最后一次评测停在最后一个 <code>eval_every</code>，不是训完的模型</td><td>训练结束统一调用 <code>_finish()</code> 做完整评测</td></tr>
+      <tr><td>home 配额不够</td><td>十几个实验的 checkpoint 很快把 16 GB 占满</td><td>训完只留权重存为 <code>final.pt</code>，470 MB → 157 MB</td></tr>
+      <tr><td>训完再续训</td><td>压缩存档后调大 <code>max_steps</code>，优化器状态已经丢了</td><td>这种情况直接报错，不悄悄从头训优化器</td></tr>
+      <tr><td>编译后收不到信号</td><td>冒烟作业收到 SIGUSR1 后既没停也没死；编译时加载的库在 C 层换掉了处理函数</td><td>第一步之后重新注册，下一个冒烟作业在下一步就存档退出</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="pit-data">数据</h2>
+  <div class="table"><table>
+    <thead><tr><th style="width:22%">问题</th><th style="width:40%">怎么发现的</th><th style="width:38%">怎么修的</th></tr></thead>
+    <tbody>
+      <tr><td>过滤器误杀</td><td>已经清洗过的 fineweb-edu 只有 3.8% 能通过</td><td>对齐 datatrove 的规则语义；中文阈值按字数 ×3</td></tr>
+      <tr><td>MinHash 召回不足</td><td>构造的近似重复对只找回 51–84%</td><td>256 个哈希、32 个 band，补上召回测试</td></tr>
+      <tr><td>中文去污染误报</td><td>约 9% 的中文网页被判为污染</td><td>汉字权重 0.5，排除 220 个常见 n-gram</td></tr>
+      <tr><td>下载量估不准</td><td>代码和维基不够配额，最后一个任务被截断</td><td>探测时套用过滤规则，任务大小固定为 8 个 row group</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="pit-tools">工具和环境</h2>
+  <ul>
+    <li>分词器单元测试的语料太小，词表只能长到 427，达不到设定值却没有报错。现在词表不足直接抛 <code>ValueError</code>。</li>
+    <li>变异测试里改动前后文件大小相同，Python 用了旧的 <code>.pyc</code>。运行时设 <code>PYTHONDONTWRITEBYTECODE=1</code>。</li>
+    <li>Windows PowerShell 5 没有 <code>&amp;&amp;</code> 和 <code>sha256sum</code>，上传文档改成逐行命令和 <code>Get-FileHash</code>。</li>
+  </ul>
+</article>
+
+<!-- ======================================================= lessons -->
+<article class="page" id="lessons" hidden>
+  <p class="crumb">经验</p>
+  <h1>教训</h1>
+  <p class="lead">P1 到 P5 里最值得记住的四条。它们都不是具体的 bug，而是做实验时的判断方法。</p>
+
+  <h2 id="les-1">超过噪声，不等于结论可靠</h2>
+  <p>6 组消融全部超过 2σ，但逐条看，只有 A2 是干净的。A1 和 A5 和学习率纠缠在一起，A3 多了参数，A4 是取舍，A6 同时改了两处。种子方差只衡量随机性，衡量不了实验设计本身的偏差。</p>
+
+  <h2 id="les-2">"条件相同"不等于公平</h2>
+  <p>缩放实验固定 batch 和 warmup 步数，看起来条件相同，实际上对小模型极不公平：它的步数最少，warmup 占比最大。s1 只因为步数够了，loss 就降了 0.91。比较不同规模时，要让每个点的"训练充分程度"一致。</p>
+
+  <h2 id="les-3">用答案已知的数据检验实现</h2>
+  <p>过滤器、去重、去污染、z-loss 写错都不会报错。能发现问题，靠的是先找一份结果已知的数据：已经清洗过的数据应该大部分通过；构造的重复对应该被找回；关掉一个"几乎零成本"的开关不应该快一倍。</p>
+
+  <h2 id="les-4">中途对比会夸大最终差距</h2>
+  <p>同样 token 数时 s2 差 0.26，训完只差 0.13。用中途结果判断"有没有问题"可以，用来估计"问题有多大"不行。这也是为什么第二轮消融要完整训到底。</p>
+</article>
+
+<!-- ======================================================= expect -->
+<article class="page" id="expect" hidden>
+  <p class="crumb">展望</p>
+  <h1>P6 预期</h1>
+  <div class="note warn"><b class="label">估算边界</b><p>旧 2.5 小时 / 66 AUD 为历史计划，非当前报价或实测。现阶段暂按 8×H100 训练 3–5 小时预留；实际时长和费用由目标机器短测及租机报价决定。尚未租机。</p></div><p class="lead">P6 在 8×H100 竞价实例上训练 250M 主模型。下面是训练前写下的预期，训完后逐条对照。</p>
+
+  <dl class="facts">
+    <div><dt>训练量</dt><dd>9.44B<small>tokens，约 40 tokens/参数</small></dd></div>
+    <div><dt>步数</dt><dd>18,000<small>每步 524,288 tokens</small></dd></div>
+    <div><dt>时长</dt><dd>约 2.5 h<small>8×H100</small></dd></div>
+    <div><dt>费用</dt><dd>约 66 AUD<small>历史估算，租机前重新核价</small></dd></div>
+  </dl>
+
+  <h2 id="exp-loss">loss 预期</h2>
+  <div class="table"><table>
+    <thead><tr><th style="width:36%">对照点</th><th style="width:22%">预期</th><th style="width:42%">依据</th></tr></thead>
+    <tbody>
+      <tr><td>WSD 分叉点（20 tokens/非嵌入参数）</td><td>略低于 2.74</td><td>缩放律外推 2.74 是 v1 数据；v2 在 s2 规模上低约 0.05</td></tr>
+      <tr><td>训完（9.44B tokens）</td><td>低于分叉点</td><td>同一个 39M 模型多训 75% 数据 loss 降 0.25，这个规模远没到数据饱和</td></tr>
+      <tr><td>下游任务</td><td>HellaSwag ≳ 33%</td><td>路线图原定的验收线</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note warn"><b class="label">要重新校准</b>
+    <p>路线图的验收标准"val loss ≈ 2.8–3.1"定在等权验证集之前，数值口径不同。开跑前按缩放律预测和新验证集重写这一条。</p>
+  </div>
+
+  <h2 id="exp-fork">分叉点要统一</h2>
+  <p>路线图把第 4 个缩放点的分叉放在第 9000 步，也就是 4.72B tokens，按总参数算的 20 倍。缩放阶梯用的是非嵌入参数的 20 倍，4.06B tokens，约第 7740 步。要和 2.74 直接比较，分叉点应改在第 7740 步附近，衰减段同样占 10%。</p>
+
+  <h2 id="exp-cost">费用预期</h2>
+  <ul>
+    <li>路线图按假设的 MFU 估算：主训练约 2.5 小时、45 AUD，分叉 2.3 AUD，对象存储 3 AUD，总计约 66 AUD（含余量）。</li>
+    <li>z-loss 修复让开着 z-loss 的训练快了约三分之一，费用可能低于计划。</li>
+    <li>但 P5 已经证明假设的 MFU 不可信：开跑后前 10 分钟先测 H100 上的实际 MFU，重算费用，超预算就停机排查。</li>
+  </ul>
+
+  <h2 id="exp-risk">风险</h2>
+  <div class="table"><table>
+    <thead><tr><th style="width:30%">风险</th><th style="width:70%">应对</th></tr></thead>
+    <tbody>
+      <tr><td>竞价实例被回收</td><td>接力续训已在 Rangpur 验证；计划把 checkpoint 定期同步到对象存储</td></tr>
+      <tr><td>DDP 实现有误</td><td>开跑前在 2 张卡上对比单卡 loss 曲线</td></tr>
+      <tr><td>loss 尖峰</td><td>A7 验证 QK-Norm 加 z-loss 的稳定性；逐步记录梯度范数峰值</td></tr>
+      <tr><td>学习率不合适</td><td>P5 的 A5 暗示 2e-3 对 39M 偏低；P6 的 7e-4 还没扫过，先做学习率扫描</td></tr>
+    </tbody>
+  </table></div>
+</article>
+
+<!-- ======================================================= plan -->
+<article class="page" id="plan" hidden>
+  <p class="crumb">展望</p>
+  <h1>后续优化计划</h1>
+  <p class="lead">P5 与 Rangpur 收尾已完成。接下来优先补 DDP、正式数据与主模型短测，然后才启动 P6 付费训练。</p>
+
+  <h2 id="plan-p5">P5 收尾</h2>
+  <ul>
+    <li><b>已完成：第二轮与组合验证</b>：基线 σ=0.0089；Muon 优势缩小约 59%；组合 loss=3.2748。下一步验证主模型配置的可迁移性。</li>
+    <li><b>学习率扫描</b>：AdamW 和 Muon 各扫 3–4 个峰值学习率，取各自的最优再比较。A1 和 A5 的结论都依赖这一步。</li>
+    <li><b>定下 P6 配置</b>：优化器、QK-Norm、峰值学习率三项，写进决定表。</li>
+  </ul>
+
+  <h2 id="plan-p6">P6 开跑前必须完成</h2>
+  <ol>
+    <li><b>实现 DDP</b>，在 2 张卡上验证 loss 与单卡一致，续训和信号处理在多卡下也要能用。</li>
+    <li><b>生成 P6 数据</b>：v2 配比 10.4B tokens，逐分片上传对象存储（约 19 GB，home 放不下）。</li>
+    <li><b>统一分叉点</b>：改到约第 7740 步，与缩放阶梯的 20 tokens/非嵌入参数一致。</li>
+    <li><b>先租 1% 时间测 MFU</b>：在 H100 上跑几十步，用实测值重算时长和费用。</li>
+  </ol>
+
+  <h2 id="plan-better">做了会更好</h2>
+  <div class="cols">
+    <section>
+      <h3>速度</h3>
+      <ul>
+        <li>z-loss 剩下的 11% 开销：和分块交叉熵融合到同一个循环里</li>
+        <li>检查编译路径对不同开关的影响</li>
+      </ul>
+    </section>
+    <section>
+      <h3>数据</h3>
+      <ul>
+        <li>短题目去污染：C-Eval 27%、CMMLU 38% 的题目太短进不了 13-gram 索引</li>
+        <li>维基下载量翻倍，消除 1.3–1.4 轮的重复</li>
+      </ul>
+    </section>
+    <section>
+      <h3>监控</h3>
+      <ul>
+        <li>逐步记录梯度范数峰值，不再抽样</li>
+        <li>用 P5 的多个点拟合同时含参数和数据量的 L(N, D)</li>
+      </ul>
+    </section>
+  </div>
+
+  <h2 id="plan-later">之后</h2>
+  <div class="table"><table>
+    <thead><tr><th style="width:12%">阶段</th><th style="width:40%">内容</th><th style="width:48%">验收</th></tr></thead>
+    <tbody>
+      <tr><td class="m">P7</td><td>长上下文退火（4096、RoPE θ = 500000）、SFT、DPO</td><td>能进行多轮对话、遵循基本指令格式，并如实记录它做不到什么</td></tr>
+      <tr><td class="m">P8</td><td>下游任务评测、对照模型、技术报告、模型卡</td><td>一份别人照着能复现的报告</td></tr>
+    </tbody>
+  </table></div>
+  <p>P8 交付之后，才考虑用同一套代码放大到 500M 或 1B。</p>
+</article>
+
+
+
+
+
+<nav class="pager" id="pager" aria-label="翻页"></nav>
+<p class="foot">数据截至 2026-10-03。来源：myTransformer 仓库的 reports/ 与 docs/ 目录。</p>
+</main>
+
+<aside class="toc" id="toc" aria-label="本页目录"></aside>
+</div>
+
+<script>
+(function () {
+  var pages = Array.prototype.slice.call(document.querySelectorAll('article.page'));
+  var links = Array.prototype.slice.call(document.querySelectorAll('.sidebar a'));
+  var pager = document.getElementById('pager');
+  var toc = document.getElementById('toc');
+  var sidebar = document.getElementById('sidebar');
+  var menuBtn = document.getElementById('menu-btn');
+
+  function titleOf(p) { return p.querySelector('h1').textContent; }
+
+  function show(id, fromNav) {
+    var idx = 0;
+    for (var i = 0; i < pages.length; i++) if (pages[i].id === id) idx = i;
+    var page = pages[idx];
+    pages.forEach(function (p) { p.hidden = p !== page; });
+    links.forEach(function (a) {
+      if (a.getAttribute('href') === '#' + page.id) a.setAttribute('aria-current', 'page');
+      else a.removeAttribute('aria-current');
+    });
+
+    var html = '';
+    if (idx > 0) html += '<a class="prev" href="#' + pages[idx - 1].id + '"><small>上一章</small><strong>' + titleOf(pages[idx - 1]) + '</strong></a>';
+    if (idx < pages.length - 1) html += '<a class="next" href="#' + pages[idx + 1].id + '"><small>下一章</small><strong>' + titleOf(pages[idx + 1]) + '</strong></a>';
+    pager.innerHTML = html;
+
+    var heads = page.querySelectorAll('h2[id]');
+    toc.innerHTML = heads.length ? '<h4>本页目录</h4>' : '';
+    Array.prototype.forEach.call(heads, function (h) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = h.textContent;
+      b.addEventListener('click', function () { h.scrollIntoView(); });
+      toc.appendChild(b);
+    });
+
+    sidebar.classList.remove('open');
+    menuBtn.setAttribute('aria-expanded', 'false');
+    if (fromNav) window.scrollTo(0, 0);
+  }
+
+  function route(fromNav) {
+    var id = (location.hash || '').slice(1);
+    show(id || pages[0].id, fromNav);
+  }
+
+  window.addEventListener('hashchange', function () { route(true); });
+  menuBtn.addEventListener('click', function () {
+    var open = sidebar.classList.toggle('open');
+    menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.target.closest && e.target.closest('input, textarea')) return;
+    var cur = pages.findIndex(function (p) { return !p.hidden; });
+    if (e.key === 'ArrowRight' && cur < pages.length - 1) location.hash = pages[cur + 1].id;
+    if (e.key === 'ArrowLeft' && cur > 0) location.hash = pages[cur - 1].id;
+  });
+  route(false);
+})();
+</script>
+
+</html>

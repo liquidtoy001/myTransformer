@@ -1,8 +1,12 @@
 # P6 准备与 Rangpur 收尾
 
+**2026-10-02 收尾完成**：完整归档已下载并校验，23 份权重/存档通过严格加载和短前向。远端 `myTransformer`、`mt-venv` 已清理，课程 miniconda3 保留；最新 home 可用约 12G。审计记录见 [备份与清理报告](../reports/rangpur-backup-2026-10-02.md)。下文步骤保留为历史计划，不要重复提交或删除。
+
 2026-10-01：用户确认先验证再正式训练；Rangpur 工作结束后备份成果并释放空间给其他项目。本页是执行计划，不代表任务已完成。
 
 ## 1. 最后一次组合验证
+
+**2026-10-02 已完成并拉回**：作业 620696，最终 val loss 3.2748；权重严格加载和短前向通过。详见 [组合验证报告](../reports/p6_combination.md)。以下提交命令保留作复现参考，无需重复提交。全量备份仍缺本地 P5b 最终权重及远端清单校验。
 
 配置：`configs/train/p6_check/muon_qknorm.yaml`。在 P5b Muon 配置上仅增加 QK-Norm，保留 z-loss、seed 0、v1 数据和 790,102,016 tokens。新目录 `runs/p6_check/muon_qknorm` 避免覆盖旧实验。
 
