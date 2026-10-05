@@ -28,6 +28,7 @@ from ..data.shards import ShardLoader, eval_batches
 from ..model import ModelConfig, Transformer
 from ..tokenizer import Tokenizer
 from . import checkpoint as ck
+from . import distributed
 from .config import TrainConfig
 from .muon import Muon, split_params
 from .schedule import LRSchedule
@@ -73,13 +74,19 @@ class Trainer:
         log: Callable[[str], None] = print,
     ) -> None:
         self.cfg = cfg
-        self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+        device_type = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu")).type
+        # 多卡：torchrun 起了几个进程，每个进程管一张卡。单进程时 dist 是 world=1 的空壳
+        self.dist = distributed.init(device_type)
+        self.is_main = self.dist.is_main
+        self.device = (torch.device("cuda", self.dist.local_rank) if device_type == "cuda" and self.dist.enabled
+                       else torch.device(device or device_type))
         self.run_dir = Path(cfg.run_dir)
         self.max_seconds = max_minutes * 60 if max_minutes else None
         self.on_step = on_step
-        self.log = log
+        self.log = log if self.is_main else (lambda _: None)  # 只让主进程说话，否则每行打印 8 遍
         self.stop_reason: str | None = None
 
+        # 所有 rank 用同一个种子，初始权重本来就相同；DDP 构造时还会从 rank 0 再广播一次
         torch.manual_seed(cfg.seed)
         self.model_cfg = ModelConfig.from_yaml(cfg.model)
         if cfg.seq_len > self.model_cfg.max_seq_len:
@@ -90,11 +97,13 @@ class Trainer:
             cfg.lr, cfg.warmup_steps, cfg.max_steps,
             kind=cfg.schedule, decay_start=cfg.decay_start, min_lr_ratio=cfg.min_lr_ratio,
         )
-        self.accum = cfg.grad_accum_steps()
+        # global_batch_tokens 不随卡数变：卡多了，每张卡累积的次数就少
+        self.accum = cfg.grad_accum_steps(self.dist.world)
         train_paths = _glob(cfg.train_data)
         val_paths = _glob(cfg.val_data) if cfg.val_data else []
         self._check_data(train_paths + val_paths)
-        self.loader = ShardLoader(train_paths, cfg.micro_batch_size, cfg.seq_len, seed=cfg.seed)
+        self.loader = ShardLoader(train_paths, cfg.micro_batch_size, cfg.seq_len, seed=cfg.seed,
+                                  rank=self.dist.rank, world_size=self.dist.world)
         # 每个验证文件单独算 loss（P2 为每个子集各写一个 val_<子集>.bin）：中文和英文的 loss
         # 走势常常不一样，混成一个数就看不出来。总的 eval 批数在各文件之间平分，开销不变
         per_file = math.ceil(cfg.eval_batches / max(1, len(val_paths)))
@@ -102,7 +111,16 @@ class Trainer:
             Path(p).stem.removeprefix("val_"): eval_batches([p], cfg.micro_batch_size, cfg.seq_len, per_file)
             for p in val_paths
         }
-        self.fwd = torch.compile(self.model) if cfg.compile else self.model
+        # DDP 包在编译外面：先 DDP 再 compile，torch.compile 会按 DDP 的梯度桶切图，通信与反向重叠。
+        # broadcast_buffers=False：唯一的 buffer 是 RoPE 的 cos/sin 表，各 rank 算出来一样，不必每步广播
+        self.ddp = None
+        if self.dist.enabled:
+            self.ddp = torch.nn.parallel.DistributedDataParallel(
+                self.model, device_ids=[self.device.index] if self.device.type == "cuda" else None,
+                broadcast_buffers=False,
+            )
+        target = self.ddp if self.ddp is not None else self.model
+        self.fwd = torch.compile(target) if cfg.compile else target
         self.amp_dtype = torch.bfloat16 if cfg.dtype == "bfloat16" else None
         self.flops_per_token = self.model_cfg.flops_per_token(cfg.seq_len)
         self.peak_flops = self._peak_flops()
@@ -146,6 +164,7 @@ class Trainer:
             window_steps += 1
 
             if self.step % cfg.log_every == 0 or self.step == cfg.max_steps:
+                loss = self._mean(loss)  # 每个 rank 只看到自己那份数据的 loss，记录的是全体平均
                 if self.device.type == "cuda":
                     torch.cuda.synchronize()
                 now = time.perf_counter()
@@ -164,6 +183,10 @@ class Trainer:
                 elapsed = time.perf_counter() - t_start
                 if elapsed + 2 * elapsed / (self.step - session_start) > self.max_seconds:
                     self.stop_reason = "time"
+            # 多卡时停不停必须全体一致：信号可能只到了部分进程，各进程的计时也差几毫秒。
+            # 如果一个进程去存档、另一个进入下一步的梯度同步，两边会互相等到超时
+            if self._any(self.stop_reason is not None) and self.stop_reason is None:
+                self.stop_reason = "peer"  # 自己没收到停止请求，是别的 rank 要求的
             if self.stop_reason:
                 if last_saved != self.step:
                     self._save(self.stop_reason)
@@ -184,17 +207,21 @@ class Trainer:
            （P5 的 ladder_s1 停在 360 步、最后一次评测在 300 步，就是这样漏掉的）
         2. **压缩存档**（final_weights_only）：只留权重，删掉带优化器状态的完整 checkpoint
         """
-        if self.val and not self._has_eval_at(self.step):
+        # metrics.jsonl 只有主进程写，由它判断、再告诉其他进程；评测本身要全体参加
+        if self.val and not self._any(self.is_main and self._has_eval_at(self.step)):
             self._log_eval()
         if self.cfg.final_weights_only and ck.latest(self.run_dir) is not None:
-            path = ck.finalize(self.run_dir, {
-                "model": self.model.state_dict(),
-                "step": self.step,
-                "tokens_seen": self.tokens_seen,
-                "meta": {"git": _git_commit(), "config": self.cfg.to_dict(),
-                         "model_config": asdict(self.model_cfg), "time": time.time()},
-            })
-            self.log(f"已压缩为 {path.name}（只含权重），完整 checkpoint 已删除")
+            self._barrier()  # 所有进程都读完 checkpoint 列表之后，主进程才能删
+            if self.is_main:
+                path = ck.finalize(self.run_dir, {
+                    "model": self.model.state_dict(),
+                    "step": self.step,
+                    "tokens_seen": self.tokens_seen,
+                    "meta": {"git": _git_commit(), "config": self.cfg.to_dict(),
+                             "model_config": asdict(self.model_cfg), "time": time.time()},
+                })
+                self.log(f"已压缩为 {path.name}（只含权重），完整 checkpoint 已删除")
+            self._barrier()
 
     def _has_eval_at(self, step: int) -> bool:
         f = self.run_dir / "metrics.jsonl"
@@ -237,15 +264,22 @@ class Trainer:
         self._set_lr(lr)
 
         total = torch.zeros((), device=self.device)
-        for _ in range(self.accum):
+        for i in range(self.accum):
             x, y = self.loader.next_batch()
             x, y = x.to(self.device, non_blocking=True), y.to(self.device, non_blocking=True)
-            with self._autocast():
-                loss = self.fwd(x, y, shift=False, ce_chunk=self.cfg.ce_chunk, z_loss=self.cfg.z_loss)["loss"]
-            # 除以累积步数：累积 k 个 micro batch 的梯度，等于一个 k 倍大的 batch 的平均梯度
-            (loss / self.accum).backward()
+            # 多卡：只在最后一个 micro batch 的反向里同步梯度。前面几次各自累积在本地，
+            # 否则每个 micro batch 都要全量 all-reduce 一次，通信量翻 accum 倍
+            last = i == self.accum - 1
+            sync = contextlib.nullcontext() if self.ddp is None or last else self.ddp.no_sync()
+            with sync:
+                with self._autocast():
+                    loss = self.fwd(x, y, shift=False, ce_chunk=self.cfg.ce_chunk, z_loss=self.cfg.z_loss)["loss"]
+                # 除以累积步数：累积 k 个 micro batch 的梯度，等于一个 k 倍大的 batch 的平均梯度。
+                # DDP 再对各 rank 取平均，合起来就是 world × k 个 micro batch 的平均梯度
+                (loss / self.accum).backward()
             total += loss.detach()
 
+        # 同步之后各 rank 的梯度完全相同，所以范数、"是否跳过这一步"在各 rank 上也一致，不需要再通信。
         # 返回的是裁剪**前**的总范数——它是训练要炸的最灵敏的先行指标
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.grad_clip)
         if torch.isfinite(grad_norm):
@@ -266,36 +300,43 @@ class Trainer:
 
     def _save(self, reason: str) -> None:
         if self.probe_ids is None:
-            # 自检用的固定小 batch，第一次存档时从数据里取，之后一直带在 checkpoint 里
-            x, y = self.loader.peek()
+            # 自检用的固定小 batch，第一次存档时从数据里取，之后一直带在 checkpoint 里。
+            # 取 rank 0 的那份，所有 rank 拿到的一样
+            x, y = self.loader.peek(rank=0)
             n = min(PROBE_TOKENS, x.size(1))
             self.probe_ids = torch.cat([x[:2, :n], y[:2, n - 1 : n]], dim=1).to(self.device)
-        payload = {
-            "model": self.model.state_dict(),
-            "optimizer": [o.state_dict() for o in self.opts],
-            "step": self.step,
-            "tokens_seen": self.tokens_seen,
-            "loader": self.loader.state_dict(),
-            "rng": {
-                "torch": torch.get_rng_state(),
-                **({"cuda": torch.cuda.get_rng_state_all()} if self.device.type == "cuda" else {}),
-            },
-            "probe": {
-                "ids": self.probe_ids.cpu(),
-                **self._probe(),
-                "next_tokens": self.loader.peek()[0][0, :16].tolist(),
-            },
-            "meta": {
-                "reason": reason,
-                "git": _git_commit(),
-                "config": self.cfg.to_dict(),
-                "model_config": asdict(self.model_cfg),
-                "time": time.time(),
-            },
-        }
-        path = ck.save(self.run_dir, self.step, payload)
-        ck.prune(self.run_dir, self.cfg.ckpt_keep, self.cfg.ckpt_keep_every)
-        self.log(f"已存档 {path.name}（{reason}）")
+        # 各 rank 的权重、优化器状态、加载器状态完全相同，只需主进程写一份。
+        # 加载器状态（epoch、分片、offset）本来就是各 rank 共享的
+        if self.is_main:
+            payload = {
+                "model": self.model.state_dict(),
+                "optimizer": [o.state_dict() for o in self.opts],
+                "step": self.step,
+                "tokens_seen": self.tokens_seen,
+                "loader": self.loader.state_dict(),
+                "rng": {
+                    "torch": torch.get_rng_state(),
+                    # 只存本卡的。get_rng_state_all() 会在 rank 0 上给每张卡建 CUDA 上下文，8 卡机上白占显存
+                    **({"cuda": torch.cuda.get_rng_state(self.device)} if self.device.type == "cuda" else {}),
+                },
+                "probe": {
+                    "ids": self.probe_ids.cpu(),
+                    **self._probe(),
+                    "next_tokens": self.loader.peek(rank=0)[0][0, :16].tolist(),
+                },
+                "meta": {
+                    "reason": reason,
+                    "git": _git_commit(),
+                    "config": self.cfg.to_dict(),
+                    "model_config": asdict(self.model_cfg),
+                    "world_size": self.dist.world,
+                    "time": time.time(),
+                },
+            }
+            path = ck.save(self.run_dir, self.step, payload)
+            ck.prune(self.run_dir, self.cfg.ckpt_keep, self.cfg.ckpt_keep_every)
+            self.log(f"已存档 {path.name}（{reason}）")
+        self._barrier()  # 写完才放行：其他进程马上退出的话，作业可能在主进程写到一半时结束
 
     def _resume(self) -> None:
         final = ck.final_path(self.run_dir)
@@ -333,8 +374,10 @@ class Trainer:
         self.loader.load_state_dict(state["loader"])
         torch.set_rng_state(state["rng"]["torch"].cpu())
         cuda_rng = state["rng"].get("cuda")
-        if self.device.type == "cuda" and cuda_rng and len(cuda_rng) == torch.cuda.device_count():
-            torch.cuda.set_rng_state_all([t.cpu() for t in cuda_rng])
+        if isinstance(cuda_rng, list):  # 旧存档存的是每张卡一份（Rangpur 单卡时只有一个）
+            cuda_rng = cuda_rng[0] if len(cuda_rng) == 1 else None
+        if self.device.type == "cuda" and cuda_rng is not None:
+            torch.cuda.set_rng_state(cuda_rng.cpu(), self.device)
         self.probe_ids = state["probe"]["ids"].to(self.device)
 
         self._verify_resume(state, path)
@@ -354,7 +397,7 @@ class Trainer:
                     f"续跑自检失败（模型输出 {key}）：{path.name} 存档时算出 {expected:.8f}，"
                     f"现在算出 {got[key]:.8f}。模型代码或权重与存档时不一致。"
                 )
-        nxt = self.loader.peek()[0][0, :16].tolist()
+        nxt = self.loader.peek(rank=0)[0][0, :16].tolist()
         if nxt != state["probe"]["next_tokens"]:
             raise ResumeError(
                 f"续跑自检失败（数据流）：{path.name} 存档时记录的下一个 batch 以 {state['probe']['next_tokens'][:4]}… 开头，"
@@ -386,7 +429,8 @@ class Trainer:
             "loss": loss.item(), "lr": lr, "grad_norm": grad_norm.item(), "step_s": step_s, "tok_s": tok_s,
         }
         if self.peak_flops:
-            rec["mfu"] = self.flops_per_token * tok_s / self.peak_flops
+            # tok_s 是全体的吞吐，峰值也要按全部卡算
+            rec["mfu"] = self.flops_per_token * tok_s / (self.peak_flops * self.dist.world)
         if self.device.type == "cuda":
             rec["mem_gib"] = torch.cuda.max_memory_allocated() / 2**30
         self._append(rec)
@@ -401,12 +445,19 @@ class Trainer:
         self.model.eval()
         per_set = {}
         for name, batches in self.val.items():
-            losses = []
-            for x, y in batches:
+            # 验证 batch 轮流分给各 rank（第 i 个给 rank i % world），各自求和再汇总：
+            # 结果与单卡算全部 batch 相同（只差浮点求和顺序），耗时降到 1/world
+            acc = torch.zeros(2, device=self.device, dtype=torch.float64)  # [loss 之和, batch 数]
+            for i, (x, y) in enumerate(batches):
+                if i % self.dist.world != self.dist.rank:
+                    continue
                 with self._autocast():
                     out = self.model(x.to(self.device), y.to(self.device), shift=False, ce_chunk=self.cfg.ce_chunk)
-                losses.append(out["loss"].item())
-            per_set[name] = sum(losses) / len(losses)
+                acc[0] += out["loss"].double()
+                acc[1] += 1
+            if self.dist.enabled:
+                torch.distributed.all_reduce(acc)
+            per_set[name] = (acc[0] / acc[1]).item()
         self.model.train()
         val = sum(per_set.values()) / len(per_set)  # 各子集等权平均：不让 token 多的子集主导
         rec = {"type": "eval", "step": self.step, "tokens": self.tokens_seen, "val_loss": val}
@@ -427,6 +478,8 @@ class Trainer:
         check_meta(paths, fingerprint)
 
     def _append(self, rec: dict) -> None:
+        if not self.is_main:
+            return
         self.run_dir.mkdir(parents=True, exist_ok=True)
         with open(self.run_dir / "metrics.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
@@ -434,11 +487,33 @@ class Trainer:
     def _banner(self) -> str:
         c, n = self.cfg, self.model_cfg.count_params()
         return (
-            f"模型 {n['total'] / 1e6:.1f}M 参数（非嵌入 {n['non_embedding'] / 1e6:.1f}M）  设备 {self.device}  "
-            f"dtype {c.dtype}  compile {c.compile}\n"
-            f"每步 {c.global_batch_tokens:,} tokens = micro {c.micro_batch_size} × seq {c.seq_len} × 累积 {self.accum}  "
+            f"模型 {n['total'] / 1e6:.1f}M 参数（非嵌入 {n['non_embedding'] / 1e6:.1f}M）  设备 {self.device}"
+            f"{f' × {self.dist.world} 进程' if self.dist.enabled else ''}  dtype {c.dtype}  compile {c.compile}\n"
+            f"每步 {c.global_batch_tokens:,} tokens = micro {c.micro_batch_size} × seq {c.seq_len} × "
+            f"{f'{self.dist.world} 卡 × ' if self.dist.enabled else ''}累积 {self.accum}  "
             f"从 step {self.step} 训到 {c.max_steps}（共 {c.max_steps * c.global_batch_tokens / 1e9:.3f}B tokens）"
         )
+
+    # ------------------------------------------------------------------ 多卡通信（单卡时全是空操作）
+
+    def _mean(self, t: torch.Tensor) -> torch.Tensor:
+        if self.dist.enabled:
+            t = t.clone()
+            torch.distributed.all_reduce(t)
+            t /= self.dist.world
+        return t
+
+    def _any(self, flag: bool) -> bool:
+        """有任何一个 rank 为 True 就返回 True。所有 rank 都必须调用，否则会互相等。"""
+        if not self.dist.enabled:
+            return flag
+        t = torch.tensor([1.0 if flag else 0.0], device=self.device)
+        torch.distributed.all_reduce(t, op=torch.distributed.ReduceOp.MAX)
+        return bool(t.item())
+
+    def _barrier(self) -> None:
+        if self.dist.enabled:
+            torch.distributed.barrier()
 
     # ------------------------------------------------------------------ 杂项
 

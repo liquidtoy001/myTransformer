@@ -26,6 +26,7 @@
 | [p4-4](p4-4-checkpoint.md) | 原子 checkpoint | `src/mytransformer/train/checkpoint.py` |
 | [p4-5](p4-5-trainer.md) | 训练循环：续跑、自检、退出；**怎么读训练日志** | `src/mytransformer/train/trainer.py` |
 | [p4-6](p4-6-rangpur-jobs.md) | Rangpur 作业脚本：信号怎么送到 Python、接力、冒烟 | `scripts/rangpur/` |
+| [p4-7](p4-7-ddp.md) | 多卡数据并行：梯度同步、全体一致的停止、跨卡数续跑 | `src/mytransformer/train/distributed.py`、`trainer.py`、`scripts/cloud/ddp_check.sh` |
 
 ## 怎么用这些笔记
 

@@ -3,6 +3,7 @@
     python -m mytransformer.train.pretrain --config configs/train/smoke_s1.yaml
     python -m mytransformer.train.pretrain --config ... --max-minutes 225        # Rangpur：4h 时限减去余量
     python -m mytransformer.train.pretrain --config ... --set compile=true --set lr=1e-3
+    torchrun --standalone --nproc_per_node 8 -m mytransformer.train.pretrain --config ...   # 单机 8 卡
 
 多次运行同一个配置是安全的：有 checkpoint 就续跑，已经训完就直接退出。
 """
@@ -14,6 +15,7 @@ import sys
 
 import yaml
 
+from . import distributed
 from .config import TrainConfig
 from .trainer import Trainer
 
@@ -49,8 +51,13 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     cfg = TrainConfig.from_yaml(args.config, **parse_overrides(args.set))
-    reason = Trainer(cfg, device=args.device, max_minutes=args.max_minutes).fit()
-    print(f"退出原因：{reason}", flush=True)
+    try:
+        trainer = Trainer(cfg, device=args.device, max_minutes=args.max_minutes)
+        reason = trainer.fit()
+        if trainer.is_main:
+            print(f"退出原因：{reason}", flush=True)
+    finally:
+        distributed.shutdown()
     return 0  # 无论训完还是提前存档退出都返回 0：sbatch 接力用 afterany，不依赖退出码
 
 

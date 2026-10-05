@@ -73,9 +73,13 @@ class ShardLoader:
         self.state, x, y = self._read(self.state)
         return x, y
 
-    def peek(self) -> tuple[torch.Tensor, torch.Tensor]:
-        """看下一个 batch 但不前进。续跑自检用：存档时记下，恢复后比对。"""
-        _, x, y = self._read(self.state)
+    def peek(self, rank: int | None = None) -> tuple[torch.Tensor, torch.Tensor]:
+        """看下一个 batch 但不前进。续跑自检用：存档时记下，恢复后比对。
+
+        rank=0：看 rank 0 将要读的那份。多卡时各 rank 读的位置不同，自检要用一个所有 rank
+        都一致、而且与卡数无关的视角——rank 0 的读取位置就是共享的 offset 本身。
+        """
+        _, x, y = self._read(self.state, self.rank if rank is None else rank)
         return x, y
 
     def state_dict(self) -> dict:
@@ -118,12 +122,12 @@ class ShardLoader:
                 epoch, shard = epoch + 1, 0
         return epoch, shard, offset
 
-    def _read(self, s: LoaderState) -> tuple[LoaderState, torch.Tensor, torch.Tensor]:
+    def _read(self, s: LoaderState, rank: int | None = None) -> tuple[LoaderState, torch.Tensor, torch.Tensor]:
         """纯函数：给定状态，返回（新状态, x, y）。不修改 self.state。"""
         bt = self.B * self.T
         epoch, shard, offset = self._normalize(s.epoch, s.shard, s.offset)
         data = self._data(self._order(epoch)[shard])
-        start = offset + self.rank * bt
+        start = offset + (self.rank if rank is None else rank) * bt
         buf = torch.from_numpy(data[start : start + bt + 1].astype(np.int64))
         x = buf[:-1].view(self.B, self.T)
         y = buf[1:].view(self.B, self.T)

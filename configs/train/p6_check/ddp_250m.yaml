@@ -1,0 +1,34 @@
+# P6 租机后的多卡验收（scripts/cloud/ddp_check.sh 用）。不是正式训练配置。
+# 用 250M + P6 候选组合（Muon + QK-Norm + z-loss），只跑几十步，回答三个问题：
+#   1. 真实 GPU + NCCL + torch.compile 下，2 卡与 1 卡的 loss 是否一致
+#   2. 8 卡的实际吞吐和 MFU，据此重算正式训练的时长和费用
+#   3. 收到 SIGTERM 后能否全体存档退出、再续上
+# 数据用 P5 的 v1 分片（3.8 GB，上传快）；学习率是占位值，验收只看一致性和速度。
+model: configs/model/250m_qknorm.yaml
+train_data: data/p5/mix/train_*.bin
+val_data: data/p5/mix/val_*.bin
+tokenizer: tokenizer/mt32k.json
+run_dir: runs/ddp_check/default
+
+seq_len: 2048
+global_batch_tokens: 524288         # 与正式训练相同；8 卡时每卡累积 2 次，1 卡时 16 次
+micro_batch_size: 16
+max_steps: 60
+
+lr: 7.0e-4
+optimizer: muon
+muon_lr: 0.02
+warmup_steps: 10
+schedule: wsd
+
+dtype: bfloat16
+compile: true
+ce_chunk: 4096
+z_loss: 1.0e-4
+
+seed: 0
+log_every: 5
+eval_every: 1000                    # 不做中途评测；训完会补一次最终评测，顺便验证多卡评测
+eval_batches: 16
+ckpt_every: 1000
+ckpt_keep: 2

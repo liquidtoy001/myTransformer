@@ -114,7 +114,7 @@
 - [x] NaN 保护：梯度非有限时跳过更新
 - [x] 日志：`metrics.jsonl`（loss / val_loss / lr / grad_norm / tok/s / MFU / 显存）
 - [x] **本地冒烟**：合成马尔可夫数据（理论下界 ln4），`ladder_s1` × 19.7M tokens，中途存档再续跑，val loss 1.421（见 [learn/p4-5](learn/p4-5-trainer.md) §3）
-- [ ] DDP 单机多卡（P6 要用）；FSDP 路径预留
+- [x] DDP 单机多卡：本机 CPU 双进程验证等价、停止同步、跨卡数续跑（`tests/test_ddp.py`，[learn/p4-7](learn/p4-7-ddp.md)）；真实 GPU + NCCL + compile 待租机后用 `scripts/cloud/ddp_check.sh` 验收。FSDP 路径预留
 - [ ] W&B：目前只写 jsonl
 - [ ] **跨设备一致性测试**（CPU fp32 vs GPU bf16）
 - [x] `scripts/rangpur/`：`setup_env.sh`、`smoke.sbatch`、`train.sbatch`、`submit_chain.sh`（`data.sbatch` 随 P2）
